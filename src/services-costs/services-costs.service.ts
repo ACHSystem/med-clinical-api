@@ -23,6 +23,22 @@ export class ServicesCostsService {
     return service;
   }
 
+  async getCurrentDolar() {
+    try {
+      const getLatestDolar = await this.prisma.dolar.findFirst({
+        orderBy: { id: 'desc' }
+      });
+
+      return getLatestDolar;
+    } catch (err) {
+      return {
+        success: false,
+        data: null,
+        message: 'Error al obtener el precio del dolar en estos momentos.'
+      }
+    }
+  }
+
   async saveDolarAutomatic() {
     try {
       // const response: Dolar = await axios.get('https://pydolarve.org/api/v2/tipo-cambio?currency=usd&format_date=default&rounded_price=true').then(res => res.data);
@@ -50,13 +66,13 @@ export class ServicesCostsService {
         }
       })
       return {
-        message:'Tasa de dolar guardada exitosamente.',
+        message: 'Tasa de dolar guardada exitosamente.',
         success: true,
         data: dolarSaved
       };
     } catch (err) {
       return {
-        message:'Error al guardar la tasa de dolar.',
+        message: 'Error al guardar la tasa de dolar.',
         success: false,
         data: null
       };

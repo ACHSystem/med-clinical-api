@@ -8,13 +8,6 @@ import { AuthGuard } from './auth.guard';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 @Module({
-  imports: [
-    PassportModule.register({ defaultStrategy: 'jwt' }),
-    JwtModule.register({
-      secret: process.env.JWT_SECRET || 'medclinical-secret-key',
-      signOptions: { expiresIn: '7d' },
-    }),
-  ],
   controllers: [AuthController],
   providers: [AuthService, JwtService, JwtStrategy, AuthGuard, PrismaService],
   exports: [AuthGuard],

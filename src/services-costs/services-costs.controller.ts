@@ -13,6 +13,10 @@ export class ServicesCostsController {
   }
 
   @Get('dolar')
+  async getDolar() {
+    return await this.servicesCostsService.getCurrentDolar();
+  }
+  @Get('dolar/save')
   async saveDolar() {
     return await this.servicesCostsService.saveDolarAutomatic();
   }

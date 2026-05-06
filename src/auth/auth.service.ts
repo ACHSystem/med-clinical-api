@@ -1,15 +1,21 @@
 import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
+import * as jwt from 'jsonwebtoken';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { LoginDto, RegisterDto } from './auth.dto';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class AuthService {
+
+  private secretKey: string;
+
   constructor(
-    private prisma: PrismaService,
-    private jwtService: JwtService,
-  ) { }
+    private readonly prisma: PrismaService,
+    private readonly configService: ConfigService,
+  ) {
+    this.secretKey = this.configService.get<string>('JWT_SECRET') as string;
+  }
 
   async login(credentials: LoginDto) {
     const { email, password } = credentials;
@@ -28,11 +34,13 @@ export class AuthService {
     }
 
     const payload = { sub: user.id, email: user.email, role: user.role };
+
+    const access_token = jwt.sign(payload, this.secretKey, { expiresIn: '7d' });
     return {
       success: true,
       message: `Bienvenido ${user.name}`,
       data: {
-        access_token: this.jwtService.sign(payload),
+        access_token: access_token,
         user: {
           id: user.id,
           email: user.email,
@@ -65,7 +73,7 @@ export class AuthService {
       success: true,
       message: `Usuario ${user.name} registrado exitosamente`,
       data: {
-        access_token: this.jwtService.sign(payload),
+        access_token: jwt.sign(payload, this.secretKey, { expiresIn: '7d' }),
         user: {
           id: user.id,
           email: user.email,
