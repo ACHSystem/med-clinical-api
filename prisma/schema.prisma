@@ -1,0 +1,184 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  DOCTOR
+  ASSISTANT
+}
+
+//Usuarios
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  lastName  String
+  role      Role     @default(ASSISTANT)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  patients         Patient[]
+  medicalHistories MedicalHistory[]
+  quotes           Quote[]
+}
+
+// Pacientes
+model Patient {
+  id        String    @id @default(uuid())
+  name      String
+  lastName  String
+  identify  String
+  email     String?
+  phone     String?
+  birthDate DateTime?
+  gender    String?
+  address   String?
+  notes     String?
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  userId           String
+  user             User             @relation(fields: [userId], references: [id])
+  medicalHistories MedicalHistory[]
+  quotes           Quote[]
+}
+
+// Proveedores
+model Provider {
+  id           String   @id @default(uuid())
+  name         String
+  type         String
+  businessName String
+  identify     String
+  email        String?
+  phone        String?
+  address      String?
+  description  String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  services ProviderService[]
+}
+
+// Servicios de proveedores
+model ProviderService {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  price       Decimal  @db.Decimal(10, 2)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  providerId String
+  provider   Provider @relation(fields: [providerId], references: [id])
+}
+
+// Personalizacion
+model CustomField {
+  id         String   @id @default(uuid())
+  name       String
+  fieldType  String
+  isRequired Boolean  @default(false)
+  options    String[]
+  sortOrder  Int
+  step       Int      @default(1)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+//Historias medicas
+model MedicalHistory {
+  id        String   @id @default(uuid())
+  title     String
+  data      Json
+  notes     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id])
+  userId    String
+  user      User    @relation(fields: [userId], references: [id])
+}
+
+
+//Costos y Servicios
+model ServiceCost {
+  id          String   @id @default(uuid())
+  name        String
+  description String
+  price       Decimal  @db.Decimal(10, 2)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Historial del Dolar
+model Dolar {
+  id        String   @id @default(uuid())
+  value     Decimal  @db.Decimal(10, 2)
+  date      DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Metodos de pago
+model PaymentMethod {
+  id        String   @id @default(uuid())
+  bank      String
+  identify  String
+  phone     String
+  email     String
+  account   String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+
+// Presupuesto
+model Quote {
+  id          String    @id @default(uuid())
+  title       String
+  description String?
+  date        DateTime  @default(now())
+  validUntil  DateTime?
+  total       Decimal   @db.Decimal(10, 2)
+  status      String    @default("pending")
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id])
+  userId    String
+  user      User    @relation(fields: [userId], references: [id])
+
+  items QuoteItem[]
+}
+
+// Elementos del presupuesto
+model QuoteItem {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  quantity    Int      @default(1)
+  unitPrice   Decimal  @db.Decimal(10, 2)
+  total       Decimal  @db.Decimal(10, 2)
+  createdAt   DateTime @default(now())
+
+  quoteId String
+  quote   Quote  @relation(fields: [quoteId], references: [id])
+}
