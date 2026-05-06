@@ -4,7 +4,7 @@ import { Type } from 'class-transformer';
 export class CreateQuoteItemDto {
   @IsString()
   @IsNotEmpty()
-  name: string;
+  name!: string;
 
   @IsString()
   @IsOptional()
@@ -16,13 +16,13 @@ export class CreateQuoteItemDto {
 
   @IsNumber()
   @IsNotEmpty()
-  unitPrice: number;
+  unitPrice!: number;
 }
 
 export class CreateQuoteDto {
   @IsString()
   @IsNotEmpty()
-  title: string;
+  title!: string;
 
   @IsString()
   @IsOptional()
@@ -34,16 +34,20 @@ export class CreateQuoteDto {
 
   @IsNumber()
   @IsNotEmpty()
-  total: number;
+  total!: number;
+
+  @IsString()
+  @IsNotEmpty()
+  dolarId!: string;
 
   @IsUUID()
   @IsNotEmpty()
-  patientId: string;
+  patientId!: string;
 
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateQuoteItemDto)
-  items: CreateQuoteItemDto[];
+  items!: CreateQuoteItemDto[];
 }
 
 export class UpdateQuoteDto {

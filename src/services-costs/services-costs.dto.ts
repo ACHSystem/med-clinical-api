@@ -1,4 +1,5 @@
-import { IsBoolean, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsBoolean, IsDate, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 
 export class ServiceCostDto {
   @IsString()
@@ -12,4 +13,21 @@ export class ServiceCostDto {
   @IsNumber()
   @IsNotEmpty()
   price!: number;
+}
+
+export class DolarDTO {
+  @IsNumber()
+  value!: number;
+  @IsDate()
+  @Transform(({ value }) => new Date(value))
+  date!: Date;
+}
+export interface IDolar {
+  moneda: string;
+  fuente: string;
+  nombre: string;
+  compra: null,
+  venta: null,
+  promedio: number;
+  fechaActualizacion: Date
 }

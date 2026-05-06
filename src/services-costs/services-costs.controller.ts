@@ -12,6 +12,11 @@ export class ServicesCostsController {
     return await this.servicesCostsService.getServicesAndCosts();
   }
 
+  @Get()
+  async saveDolar() {
+    return await this.servicesCostsService.saveDolarAutomatic();
+  }
+
   @Post()
   async create(@Body() dto: ServiceCostDto) {
     return await this.servicesCostsService.create(dto);

@@ -3,11 +3,11 @@ import { IsBoolean, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-val
 export class CreateCustomFieldDto {
   @IsString()
   @IsNotEmpty()
-  name: string;
+  name!: string;
 
   @IsString()
   @IsNotEmpty()
-  fieldType: string;
+  fieldType!: string;
 
   @IsBoolean()
   @IsOptional()
@@ -19,11 +19,11 @@ export class CreateCustomFieldDto {
 
   @IsNumber()
   @IsNotEmpty()
-  sortOrder: number;
+  sortOrder!: number;
 
   @IsNumber()
   @IsNotEmpty()
-  step: number;
+  step!: number;
 }
 
 export class UpdateCustomFieldDto {

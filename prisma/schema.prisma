@@ -113,7 +113,6 @@ model MedicalHistory {
   user      User    @relation(fields: [userId], references: [id])
 }
 
-
 //Costos y Servicios
 model ServiceCost {
   id          String   @id @default(uuid())
@@ -132,6 +131,7 @@ model Dolar {
   date      DateTime @default(now())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  quotes    Quote[]
 }
 
 // Metodos de pago
@@ -147,7 +147,6 @@ model PaymentMethod {
   updatedAt DateTime @updatedAt
 }
 
-
 // Presupuesto
 model Quote {
   id          String    @id @default(uuid())
@@ -155,6 +154,8 @@ model Quote {
   description String?
   date        DateTime  @default(now())
   validUntil  DateTime?
+  dolarId     String
+  dolar       Dolar     @relation(fields: [dolarId], references: [id])
   total       Decimal   @db.Decimal(10, 2)
   status      String    @default("pending")
   isActive    Boolean   @default(true)
