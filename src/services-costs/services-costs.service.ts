@@ -79,12 +79,13 @@ export class ServicesCostsService {
     }
   }
 
-  async create(serviceCost: ServiceCostDto) {
+  async create(serviceCost: ServiceCostDto, clinicId: string) {
     const service = await this.prisma.serviceCost.create({
       data: {
         name: serviceCost.name,
         description: serviceCost.description || '',
-        price: serviceCost.price
+        price: serviceCost.price,
+        clinicId,
       }
     });
     return {

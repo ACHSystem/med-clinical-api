@@ -21,7 +21,7 @@ export class PaymentService {
     return info;
   }
 
-  async create(paymentMethod: PaymentMethodDto) {
+  async create(paymentMethod: PaymentMethodDto, clinicId: string) {
     const info = await this.prisma.paymentMethod.create({
       data: {
         bank: paymentMethod.bank,
@@ -29,6 +29,7 @@ export class PaymentService {
         phone: paymentMethod.phone,
         email: paymentMethod.email,
         account: paymentMethod.account,
+        clinicId,
       }
     });
     return {

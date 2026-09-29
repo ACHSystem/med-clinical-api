@@ -6,23 +6,36 @@ import { CreateCustomFieldDto, UpdateCustomFieldDto } from './customize.dto';
 export class CustomizeService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll() {
+  async findAll(clinicId: string) {
     return this.prisma.customField.findMany({
-      where: { isActive: true },
+      where: { isActive: true, template: { clinicId, isActive: true } },
       orderBy: { sortOrder: 'asc' },
     });
   }
 
-  async findOne(id: string) {
-    const field = await this.prisma.customField.findUnique({ where: { id } });
+  async findOne(id: string, clinicId: string) {
+    const field = await this.prisma.customField.findFirst({
+      where: { id, template: { clinicId } },
+    });
     if (!field) {
       throw new NotFoundException('Campo no encontrado');
     }
     return field;
   }
 
-  async create(dto: CreateCustomFieldDto) {
-    const field = await this.prisma.customField.create({ data: dto });
+  async create(dto: CreateCustomFieldDto, clinicId: string) {
+    const template = await this.prisma.formTemplate.upsert({
+      where: { clinicId_name: { clinicId, name: 'General' } },
+      update: { isActive: true },
+      create: {
+        name: 'General',
+        description: 'Campos personalizados generales',
+        clinicId,
+      },
+    });
+    const field = await this.prisma.customField.create({
+      data: { ...dto, options: dto.options ?? [], templateId: template.id },
+    });
     return {
       status: true,
       message: 'Campo personalizado agregado exitosamente',
@@ -30,8 +43,8 @@ export class CustomizeService {
     };
   }
 
-  async update(id: string, dto: UpdateCustomFieldDto) {
-    await this.findOne(id);
+  async update(id: string, dto: UpdateCustomFieldDto, clinicId: string) {
+    await this.findOne(id, clinicId);
     const field = await this.prisma.customField.update({ where: { id }, data: dto });
     return {
       status: true,
@@ -40,8 +53,8 @@ export class CustomizeService {
     };
   }
 
-  async remove(id: string) {
-    await this.findOne(id);
+  async remove(id: string, clinicId: string) {
+    await this.findOne(id, clinicId);
     const field = await this.prisma.customField.update({ where: { id }, data: { isActive: false } });
     return {
       status: true,
@@ -50,7 +63,16 @@ export class CustomizeService {
     };
   }
 
-  async reorder(fields: { id: string; sortOrder: number; step: number }[]) {
+  async reorder(fields: { id: string; sortOrder: number; step: number }[], clinicId: string) {
+    const fieldIds = fields.map(field => field.id);
+    const clinicFields = await this.prisma.customField.findMany({
+      where: { id: { in: fieldIds }, template: { clinicId } },
+      select: { id: true },
+    });
+    if (clinicFields.length !== fieldIds.length) {
+      throw new NotFoundException('Campo no encontrado');
+    }
+
     const updates = fields.map(f =>
       this.prisma.customField.update({
         where: { id: f.id },

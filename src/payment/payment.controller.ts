@@ -2,6 +2,7 @@ import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards } from '@nes
 import { PaymentService } from './payment.service';
 import { PaymentMethodDto } from './payment-info.dto';
 import { AuthGuard } from '../auth/auth.guard';
+import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
 
 @Controller('payment-info')
 export class PaymentController {
@@ -13,8 +14,8 @@ export class PaymentController {
   }
 
   @Post()
-  async create(@Body() dto: PaymentMethodDto) {
-    return await this.paymentService.create(dto);
+  async create(@Body() dto: PaymentMethodDto, @CurrentUser() user: CurrentUserData) {
+    return await this.paymentService.create(dto, user.clinicId);
   }
 
   @Put(':id')

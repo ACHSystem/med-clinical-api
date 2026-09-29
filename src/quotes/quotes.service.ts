@@ -6,18 +6,18 @@ import { CreateQuoteDto, UpdateQuoteDto } from './quotes.dto';
 export class QuotesService {
   constructor(private prisma: PrismaService) {}
 
-  async getQuotes(userId: string) {
+  async getQuotes(clinicId: string) {
     const quotes = await this.prisma.quote.findMany({
-      where: { userId, isActive: true },
+      where: { clinicId, isActive: true },
       include: { patient: true, items: true },
       orderBy: { createdAt: 'desc' },
     });
     return quotes;
   }
 
-  async findOne(id: string, userId: string) {
+  async findOne(id: string, clinicId: string) {
     const quote = await this.prisma.quote.findFirst({
-      where: { id, userId },
+      where: { id, clinicId },
       include: { patient: true, items: true },
     });
     if (!quote) {
@@ -26,9 +26,9 @@ export class QuotesService {
     return quote;
   }
 
-  async create(quotes: CreateQuoteDto, userId: string) {
+  async create(quotes: CreateQuoteDto, clinicId: string, userId: string) {
     // El presupuesto no puede colgar de un paciente de otra clinica (IDOR)
-    const patient = await this.prisma.patient.findFirst({ where: { id: quotes.patientId, userId } });
+    const patient = await this.prisma.patient.findFirst({ where: { id: quotes.patientId, clinicId } });
     if (!patient) {
       throw new NotFoundException('Paciente no encontrado');
     }
@@ -38,7 +38,8 @@ export class QuotesService {
       data: {
         ...quoteData,
         validUntil: quoteData.validUntil ? new Date(quoteData.validUntil) : undefined,
-        userId,
+        clinicId,
+        createdById: userId,
         items: {
           create: items.map(item => ({
             ...item,
@@ -56,8 +57,8 @@ export class QuotesService {
     };
   }
 
-  async update(id: string, quotes: UpdateQuoteDto, userId: string) {
-    await this.findOne(id, userId);
+  async update(id: string, quotes: UpdateQuoteDto, clinicId: string) {
+    await this.findOne(id, clinicId);
     const quote = await this.prisma.quote.update({
       where: { id },
       data: {
@@ -73,8 +74,8 @@ export class QuotesService {
     };
   }
 
-  async remove(id: string, userId: string) {
-    await this.findOne(id, userId);
+  async remove(id: string, clinicId: string) {
+    await this.findOne(id, clinicId);
     const quote = await this.prisma.quote.update({ where: { id }, data: { isActive: false } });
     return {
       status: true,

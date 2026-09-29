@@ -6,29 +6,29 @@ import { CreateMedicalHistoryDto, UpdateMedicalHistoryDto } from './medical-hist
 export class MedicalHistoriesService {
   constructor(private prisma: PrismaService) {}
 
-  async findAllByPatient(patientId: string, userId: string) {
-    const patient = await this.prisma.patient.findFirst({ where: { id: patientId, userId } });
+  async findAllByPatient(patientId: string, clinicId: string) {
+    const patient = await this.prisma.patient.findFirst({ where: { id: patientId, clinicId } });
     if (!patient) {
       throw new NotFoundException('Paciente no encontrado');
     }
     return this.prisma.medicalHistory.findMany({
-      where: { patientId },
+      where: { patientId, clinicId },
       orderBy: { createdAt: 'desc' },
     });
   }
 
   /** Impide escribir una historia sobre un paciente de otra clinica (IDOR). */
-  private async assertOwnsPatient(patientId: string, userId: string) {
-    const patient = await this.prisma.patient.findFirst({ where: { id: patientId, userId } });
+  private async assertOwnsPatient(patientId: string, clinicId: string) {
+    const patient = await this.prisma.patient.findFirst({ where: { id: patientId, clinicId } });
     if (!patient) {
       throw new NotFoundException('Paciente no encontrado');
     }
     return patient;
   }
 
-  async findOne(id: string, userId: string) {
+  async findOne(id: string, clinicId: string) {
     const history = await this.prisma.medicalHistory.findFirst({
-      where: { id, user: { id: userId } },
+      where: { id, clinicId },
     });
     if (!history) {
       throw new NotFoundException('Historia no encontrada');
@@ -36,15 +36,16 @@ export class MedicalHistoriesService {
     return history;
   }
 
-  async create(dto: CreateMedicalHistoryDto, userId: string) {
-    await this.assertOwnsPatient(dto.patientId, userId);
+  async create(dto: CreateMedicalHistoryDto, clinicId: string, userId: string) {
+    await this.assertOwnsPatient(dto.patientId, clinicId);
     const history = await this.prisma.medicalHistory.create({
       data: {
         title: dto.title || '',
         data: dto.data,
         notes: dto.notes || '',
         patientId: dto.patientId,
-        userId,
+        clinicId,
+        createdById: userId,
       },
     });
     return {
@@ -54,8 +55,8 @@ export class MedicalHistoriesService {
     };
   }
 
-  async update(id: string, dto: UpdateMedicalHistoryDto, userId: string) {
-    await this.findOne(id, userId);
+  async update(id: string, dto: UpdateMedicalHistoryDto, clinicId: string) {
+    await this.findOne(id, clinicId);
     const history = await this.prisma.medicalHistory.update({
       where: { id },
       data: dto,
@@ -67,8 +68,8 @@ export class MedicalHistoriesService {
     };
   }
 
-  async remove(id: string, userId: string) {
-    await this.findOne(id, userId);
+  async remove(id: string, clinicId: string) {
+    await this.findOne(id, clinicId);
     const history = await this.prisma.medicalHistory.delete({ where: { id } });
     return {
       status: true,

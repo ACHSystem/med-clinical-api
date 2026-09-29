@@ -2,6 +2,7 @@ import { Controller, Get, Post, Put, Delete, Body, Param } from '@nestjs/common'
 import { Throttle } from '@nestjs/throttler';
 import { ServicesCostsService } from './services-costs.service';
 import { ServiceCostDto } from './services-costs.dto';
+import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
 
 @Controller('services-costs')
 export class ServicesCostsController {
@@ -25,8 +26,8 @@ export class ServicesCostsController {
   }
 
   @Post()
-  async create(@Body() dto: ServiceCostDto) {
-    return await this.servicesCostsService.create(dto);
+  async create(@Body() dto: ServiceCostDto, @CurrentUser() user: CurrentUserData) {
+    return await this.servicesCostsService.create(dto, user.clinicId);
   }
 
   @Put(':id')

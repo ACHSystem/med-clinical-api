@@ -1,11 +1,14 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../prisma/prisma.service';
 
 export interface ITokenPayload {
     sub: string;
     email: string;
     role: string;
+    /** Consultorio activo: el tenant de la peticion. */
+    clinicId: string;
     iat: number;
     exp: number;
 }
@@ -20,9 +23,10 @@ export class AuthGuard implements CanActivate {
     constructor(
         private jwtService: JwtService,
         private configService: ConfigService,
+        private prisma: PrismaService,
     ) { }
 
-    canActivate(context: ExecutionContext): boolean {
+    async canActivate(context: ExecutionContext): Promise<boolean> {
         const request: Request = context.switchToHttp().getRequest();
         const requestPath = request.url.split('?')[0];
 
@@ -55,11 +59,36 @@ export class AuthGuard implements CanActivate {
             throw new UnauthorizedException('Token inválido o expirado');
         }
 
+        // Sin consultorio no hay tenant: son tokens emitidos antes del modelo multi-clinica
+        if (!payload.clinicId) {
+            throw new UnauthorizedException('Token sin consultorio: inicia sesión de nuevo');
+        }
+
+        // La membresía se revisa en cada peticion (no solo en el login) para que
+        // expulsar a alguien del consultorio surta efecto de inmediato y no
+        // espere a que expire el token de 7 dias.
+        const membership = await this.prisma.clinicUser.findFirst({
+            where: {
+                clinicId: payload.clinicId,
+                userId: payload.sub,
+                isActive: true,
+                clinic: { isActive: true },
+            },
+            select: { role: true },
+        });
+
+        if (!membership) {
+            throw new UnauthorizedException('No tienes acceso a este consultorio');
+        }
+
         // CurrentUserData expone la id como `userId`, pero el payload usa `sub`
         request['user'] = {
             userId: payload.sub,
             email: payload.email,
-            role: payload.role,
+            // El rol es el de la membresia, no el de la cuenta: el mismo usuario
+            // puede ser DOCTOR en un consultorio y ASSISTANT en otro.
+            role: membership.role,
+            clinicId: payload.clinicId,
         };
         return true;
     }

@@ -2,6 +2,7 @@ import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards } from '@nes
 import { ProvidersService } from './providers.service';
 import { ProviderDto, ProviderServiceDto } from './providers.dto';
 import { AuthGuard } from '../auth/auth.guard';
+import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
 
 @Controller('providers')
 export class ProvidersController {
@@ -13,8 +14,8 @@ export class ProvidersController {
   }
 
   @Post()
-  async create(@Body() dto: ProviderDto) {
-    return await this.providersService.create(dto);
+  async create(@Body() dto: ProviderDto, @CurrentUser() user: CurrentUserData) {
+    return await this.providersService.create(dto, user.clinicId);
   }
 
   @Put(':id')

@@ -26,9 +26,9 @@ own services, and issues itemised quotes (presupuestos) to patients.
 | Doctor | `DOCTOR` | Owns a clinic. Everything below is scoped to them. |
 | Assistant | `ASSISTANT` | Front-desk user; same data access, no special permissions implemented yet. |
 
-One `User` = one clinic. `Patient`, `MedicalHistory` and `Quote` carry a `userId` and are
-read through that scope. `Provider`, `CustomField`, `ServiceCost`, `PaymentMethod` and
-`Dolar` have no owner and are shared across the whole deployment.
+`Patient`, `MedicalHistory` and `Quote` belong to a clinic. `ServiceCost` also belongs to
+a clinic, selected from the authenticated user's active clinic when created. Its current
+read, update and delete endpoints do not yet enforce that scope. `Dolar` is global.
 
 There is no email verification, no password reset, no role-based permission check, and
 no audit trail of who edited a record.
@@ -59,7 +59,8 @@ in the `data` JSON column as a flat `{ fieldName: value }` object, keyed by what
 client sends — nothing validates it against `CustomField`.
 
 - `title` (consultation title), `data` (JSON answers), `notes` (free text),
-  `patientId`, `userId`, timestamps.
+  `patientId`, `clinicId`, `createdById`, timestamps. The clinic and author are assigned
+  from the authenticated user; the patient must belong to that clinic.
 - `GET /api/medical-histories/patient/:patientId` returns the patient's whole history,
   newest first, so the "historial de múltiples pacientes" is assembled client-side from
   one request per patient.
@@ -68,21 +69,23 @@ client sends — nothing validates it against `CustomField`.
 
 ### 2.3 Formularios personalizados — `CustomField`
 
-The questionnaire library used at consultation time. Today it is a single **flat,
-globally ordered list of fields**, not a set of named templates:
+The questionnaire library used at consultation time. Fields belong to clinic-scoped
+templates; the legacy `/customize` endpoint associates new fields with that clinic's
+`General` template:
 
 - `name`, `fieldType` (free-text string, e.g. `text` / `number` / `select`),
   `isRequired`, `options` (string array, for choice fields), `sortOrder`, `step`
   (which section of the form the field belongs to), `isActive`.
 - `PUT /api/customize/reorder` accepts an array of `{ id, sortOrder, step }` and applies
-  it in one transaction — this is the mechanism for ordering the form at runtime.
-- There is **no entity for "a template for hypertensive patients" vs "a template for
-  gastric problems"** — see §3.3.
+  it in one transaction, only to fields in the active clinic.
 
 ### 2.4 Proveedores — `Provider`, `ProviderService`
 
 External services the clinic can refer a patient to (labs, pharmacies, imaging, other
 specialists).
+
+Each provider belongs to the active clinic selected from the authenticated user's
+token when created. The current model does not store which clinic member created it.
 
 | Spec requirement | Column |
 | --- | --- |
@@ -101,24 +104,30 @@ attached to a `MedicalHistory`, a `Patient`, or a `QuoteItem` today.
 
 ### 2.5 Hoja de costos y servicios — `ServiceCost`
 
-The clinic's own price list: `name`, `description`, `price`. Global, no owner, soft
-delete. "Lo que incluye" is expected to go in `description` as free text; there is no
-structured inclusion list, and `ServiceCost` is not linked to quotes.
+The clinic's own price list: `name`, `description`, `price`. Creation associates the row
+with the active clinic from the authenticated user's token; it is soft-deleted.
+"Lo que incluye" is expected to go in `description` as free text; there is no structured
+inclusion list, and `ServiceCost` is not linked to quotes. The model does not record
+which clinic member created a service. Current read, update and delete endpoints do not
+yet enforce the clinic scope.
 
 ### 2.6 Métodos de pago — `PaymentMethod`
 
 Bank account details the patient pays into: `bank`, `identify`, `phone`, `email`,
-`account`. Global and **not referenced by `Quote`** — a quote does not say which
-payment method was offered.
+`account`. Creation associates the record with the active clinic from the authenticated
+user's token. Current read, update and delete endpoints do not yet enforce that scope.
+`PaymentMethod` is **not referenced by `Quote`** — a quote does not say which payment
+method was offered.
 
 ### 2.7 Presupuestos — `Quote`, `QuoteItem`
 
 The itemised budget handed to the patient.
 
 - `Quote`: `title`, `description?`, `date`, `validUntil?`, `status` (default `"pending"`,
-  free text), `total`, `patientId`, `userId`, and `dolarId` — a **snapshot reference to
-  the USD rate in effect when the quote was created**, so a later rate update never
-  changes an issued quote.
+  free text), `total`, `patientId`, `clinicId`, `createdById`, and `dolarId` — a
+  **snapshot reference to the USD rate in effect when the quote was created**, so a later
+  rate update never changes an issued quote. The clinic and author come from the
+  authenticated user, not the request body.
 - `QuoteItem`: `name`, `description?`, `quantity` (default 1), `unitPrice`, `total`.
   The service computes each item total as `unitPrice × quantity`, but **`Quote.total`
   itself is taken from the request body and is not recomputed** — the client is trusted
@@ -204,7 +213,10 @@ does not exist in the schema yet.
 ## 4. Route inventory (as exposed today)
 
 Global prefix `/api`. Every route requires `Authorization: Bearer <token>` except
-`POST /api/auth/login` (see `AGENTS.md` for why `register` is not public).
+`POST /api/auth/login` (see `AGENTS.md` for why `register` is not public). Tokens are
+signature-verified against `JWT_SECRET`; responses carry the Helmet header set and CORS
+is limited to `CORS_ORIGINS`. Rate limits: 100/min per IP overall, 5/min on
+`/auth/login` and `/auth/register`, 1/min on `GET /services-costs/dolar/save`.
 
 | Method | Path | Notes |
 | --- | --- | --- |
@@ -219,15 +231,15 @@ Global prefix `/api`. Every route requires `Authorization: Bearer <token>` excep
 | `DELETE` | `/patients/:id` | Scoped soft delete. |
 | `GET` | `/medical-histories/patient/:patientId` | Scoped; verifies the patient belongs to the caller. |
 | `GET` | `/medical-histories/:id` | Scoped. |
-| `POST` | `/medical-histories` | Scoped. |
+| `POST` | `/medical-histories` | Scoped; rejects a `patientId` from another clinic and assigns author from token. |
 | `PUT` | `/medical-histories/:id` | Scoped. |
 | `DELETE` | `/medical-histories/:id` | Scoped **hard** delete. |
-| `GET` | `/customize` | Global, ordered by `sortOrder`. |
-| `GET` | `/customize/:id` | Global. |
-| `POST` | `/customize` | Global. |
-| `PUT` | `/customize/:id` | Global. |
-| `DELETE` | `/customize/:id` | Global soft delete. |
-| `PUT` | `/customize/reorder` | **Unreachable** — shadowed by `PUT /customize/:id` (verified: the request reaches `customField.findUnique`). |
+| `GET` | `/customize` | Scoped to active clinic, ordered by `sortOrder`. |
+| `GET` | `/customize/:id` | Scoped to active clinic. |
+| `POST` | `/customize` | Scoped; associates field with the clinic's `General` template. |
+| `PUT` | `/customize/:id` | Scoped to active clinic. |
+| `DELETE` | `/customize/:id` | Scoped soft delete. |
+| `PUT` | `/customize/reorder` | Scoped to active clinic. |
 | `GET` | `/providers` | Global. |
 | `POST` | `/providers` | Global. |
 | `PUT` | `/providers/:id` | Global. |
@@ -242,13 +254,13 @@ Global prefix `/api`. Every route requires `Authorization: Bearer <token>` excep
 | `PUT` | `/services-costs/:id` | Global. |
 | `DELETE` | `/services-costs/:id` | Global soft delete. |
 | `GET` | `/quotes` | Scoped list with `patient` + `items`. |
-| `POST` | `/quotes` | Scoped. |
+| `POST` | `/quotes` | Scoped; rejects a `patientId` owned by another user. |
 | `PUT` | `/quotes/:id` | Scoped. |
 | `DELETE` | `/quotes/:id` | Scoped soft delete. |
-| `GET` | `/payment-info` | Global. |
-| `POST` | `/payment-info` | Global. |
-| `PUT` | `/payment-info/:id` | Global. |
-| `DELETE` | `/payment-info/:id` | Global. |
+| `GET` | `/payment-info` | Currently unfiltered by clinic. |
+| `POST` | `/payment-info` | Stores the active clinic from the authenticated user. |
+| `PUT` | `/payment-info/:id` | Currently unfiltered by clinic. |
+| `DELETE` | `/payment-info/:id` | Currently unfiltered by clinic. |
 
 No `GET /quotes/:id`, `/providers/:id` or `/services-costs/:id` route exists even though
 the services implement `findOne` for some of them.

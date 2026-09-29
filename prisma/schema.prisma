@@ -13,7 +13,7 @@ enum Role {
   ASSISTANT
 }
 
-//Usuarios
+// Identidad de la persona. NO es el tenant: un mismo User puede trabajar en varias Clinicas.
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
@@ -25,9 +25,51 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  memberships      ClinicUser[]
+  createdHistories MedicalHistory[] @relation("HistoryAuthor")
+  createdQuotes    Quote[]          @relation("QuoteAuthor")
+}
+
+// Tenant: el consultorio. Todos los datos de negocio cuelgan de aqui, no del User.
+model Clinic {
+  id        String   @id @default(uuid())
+  name      String
+  taxId     String? // RIF/NIT/identificacion fiscal
+  slug      String? // para URLs por consultorio
+  phone     String?
+  address   String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members          ClinicUser[]
   patients         Patient[]
   medicalHistories MedicalHistory[]
   quotes           Quote[]
+  templates        FormTemplate[]
+  providers        Provider[]
+  serviceCosts     ServiceCost[]
+  paymentMethods   PaymentMethod[]
+
+  @@unique([slug])
+  @@index([isActive])
+}
+
+// Membresia:Many-to-many entre User y Clinic.
+// Permite 1 medico en varias clinicas y 2 medicos en la misma clinica.
+model ClinicUser {
+  clinicId  String
+  userId    String
+  role      Role     @default(ASSISTANT) // rol DENTRO de esta clinica
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([clinicId, userId])
+  @@index([userId])
 }
 
 // Pacientes
@@ -46,13 +88,16 @@ model Patient {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  userId           String
-  user             User             @relation(fields: [userId], references: [id])
+  clinicId         String
+  clinic           Clinic           @relation(fields: [clinicId], references: [id])
   medicalHistories MedicalHistory[]
   quotes           Quote[]
+
+  @@index([clinicId, isActive])
+  @@index([clinicId, identify])
 }
 
-// Proveedores
+// Proveedores (datos de la clinica: laboratorios, transporte...)
 model Provider {
   id           String   @id @default(uuid())
   name         String
@@ -67,7 +112,12 @@ model Provider {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  clinicId String
+  clinic   Clinic @relation(fields: [clinicId], references: [id])
+
   services ProviderService[]
+
+  @@index([clinicId, isActive])
 }
 
 // Servicios de proveedores
@@ -81,10 +131,36 @@ model ProviderService {
   updatedAt   DateTime @updatedAt
 
   providerId String
-  provider   Provider @relation(fields: [providerId], references: [id])
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([providerId, isActive])
 }
 
-// Personalizacion
+// Plantilla de formulario reutilizable por condicion clinica.
+// Un historial guarda templateId (opcional) + templateSnapshot, de modo que la
+// historia sigue siendo legible aunque la plantilla cambie o se desactive.
+model FormTemplate {
+  id          String   @id @default(uuid())
+  name        String
+  condition   String?
+  description String?
+  type        String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  clinicId String
+  clinic   Clinic @relation(fields: [clinicId], references: [id])
+
+  fields           CustomField[]
+  medicalHistories MedicalHistory[]
+
+  @@unique([clinicId, name])
+  @@index([clinicId, isActive])
+}
+
+// Campos de una plantilla. OJO: fieldType es texto libre a proposito (el admin
+// crea los tipos que necesite), no es un enum.
 model CustomField {
   id         String   @id @default(uuid())
   name       String
@@ -96,21 +172,44 @@ model CustomField {
   isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
+  unit        String?
+  helpText    String?
+  placeholder String?
+  minValue    Float?
+  maxValue    Float?
+
+  templateId String
+  template   FormTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId, step, sortOrder])
+  @@index([templateId, isActive])
 }
 
 //Historias medicas
 model MedicalHistory {
-  id        String   @id @default(uuid())
-  title     String
-  data      Json
-  notes     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id               String   @id @default(uuid())
+  title            String
+  data             Json
+  notes            String
+  type             String?
+  // Copia de la definicion de la plantilla en el momento del guardado
+  templateSnapshot Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  patientId String
-  patient   Patient @relation(fields: [patientId], references: [id])
-  userId    String
-  user      User    @relation(fields: [userId], references: [id])
+  patientId   String
+  patient     Patient       @relation(fields: [patientId], references: [id])
+  clinicId    String
+  clinic      Clinic        @relation(fields: [clinicId], references: [id])
+  createdById String
+  createdBy   User          @relation("HistoryAuthor", fields: [createdById], references: [id])
+  templateId  String?
+  template    FormTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  @@index([clinicId, createdAt])
+  @@index([patientId, createdAt])
+  @@index([createdById])
 }
 
 //Costos y Servicios
@@ -122,16 +221,22 @@ model ServiceCost {
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  clinicId String
+  clinic   Clinic @relation(fields: [clinicId], references: [id])
+
+  @@index([clinicId, isActive])
 }
 
-// Historial del Dolar
+// Historial del Dolar. GLOBAL a proposito: es una cotizacion publica, no dato de clinica.
 model Dolar {
   id        String   @id @default(uuid())
   value     Decimal  @db.Decimal(10, 2)
   date      DateTime @default(now())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  quotes    Quote[]
+
+  quotes Quote[]
 }
 
 // Metodos de pago
@@ -145,6 +250,11 @@ model PaymentMethod {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  clinicId String
+  clinic   Clinic @relation(fields: [clinicId], references: [id])
+
+  @@index([clinicId, isActive])
 }
 
 // Presupuesto
@@ -162,12 +272,18 @@ model Quote {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  patientId String
-  patient   Patient @relation(fields: [patientId], references: [id])
-  userId    String
-  user      User    @relation(fields: [userId], references: [id])
+  patientId   String
+  patient     Patient @relation(fields: [patientId], references: [id])
+  clinicId    String
+  clinic      Clinic  @relation(fields: [clinicId], references: [id])
+  createdById String
+  createdBy   User    @relation("QuoteAuthor", fields: [createdById], references: [id])
 
   items QuoteItem[]
+
+  @@index([clinicId, createdAt])
+  @@index([patientId])
+  @@index([createdById])
 }
 
 // Elementos del presupuesto
@@ -181,5 +297,7 @@ model QuoteItem {
   createdAt   DateTime @default(now())
 
   quoteId String
-  quote   Quote  @relation(fields: [quoteId], references: [id])
+  quote   Quote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([quoteId])
 }

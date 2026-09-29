@@ -7,15 +7,17 @@ histories, custom intake forms, providers, service pricing, quotes).
   data). Code, identifiers and commit messages are English.
 - **Product spec: `docs/ESPECIFICACIONES.md`** — read it before adding or changing
   features; it records what each module does today and what is still missing.
+- **API reference: `docs/API.md`** — endpoint-by-endpoint contract for the frontend
+  (payloads, response envelopes, form schemas, and the list of known defects). Update it
+  whenever a route, DTO or response shape changes.
+- **Security audit: `docs/AUDITORIA.md`** — findings, the phases that were fixed, and
+  what is still open.
 - `preview/app.js` is a standalone static HTML/JS UI mock (mock data at the top of the
   file). Design reference only — it is not wired to this API.
 
-## Package manager state: the pnpm migration is uncommitted
+## Package manager
 
-`package-lock.json` is deleted in the working tree, while `pnpm-lock.yaml` and
-`pnpm-workspace.yaml` are **untracked** — the npm → pnpm move has never been committed.
-So the local checkout uses pnpm, but a **fresh clone from `origin/main` is still an npm
-project** (`npm ci`, `npm run …`). Don't assume the lockfile you see is the repo's.
+The repo uses **pnpm** (`pnpm-lock.yaml`, `pnpm-workspace.yaml`, no `package-lock.json`).
 
 If `pnpm-workspace.yaml`'s `allowBuilds` ever goes back to the literal placeholder
 strings (`set this to true or false`), **every** `pnpm run`/`pnpm exec` aborts with
@@ -47,15 +49,24 @@ call the tools directly: `npx nest start`, `npx prisma migrate dev`, `npx jest`.
   (`npx prisma migrate deploy` first; otherwise `TableDoesNotExist`). It is **not
   idempotent**: only `User` is `upsert`ed, every other insert is `create`, so a second
   run duplicates 10 patients, 15 providers, 75 provider services and 8 service costs.
-
 ## Environment
 
-`.env` is gitignored and there is **no `.env.example`**. Required keys:
-`DATABASE_URL` (PostgreSQL connection string), `JWT_SECRET`, `PORT` (default 3000).
-`ConfigModule.forRoot` reads `.env.local` first, then `.env`.
+`.env` is gitignored; `.env.example` documents every key. `ConfigModule.forRoot` reads
+`.env.local` first, then `.env`, and validates with Joi — a missing or malformed key
+fails at boot instead of becoming a runtime 500.
 
-The local `medclinical` database currently has **no tables** — the single migration has
-never been applied to it, so every request that touches data returns HTTP 500.
+| Key | Required | Notes |
+| --- | --- | --- |
+| `DATABASE_URL` | yes | PostgreSQL connection string. |
+| `JWT_SECRET` | yes | Min. 32 chars. Read with `getOrThrow`, no fallback secret. |
+| `CORS_ORIGINS` | yes | Comma-separated allow-list, e.g. `http://localhost:4200`. Never `*`. |
+| `PORT` | no | Default 3000. |
+| `DATABASE_POOL_MAX` | no | Default 10. Multiply by the number of server processes before raising it. |
+| `DATABASE_POOL_CONNECT_TIMEOUT_MS` | no | Default 5000. |
+| `DATABASE_POOL_IDLE_TIMEOUT_MS` | no | Default 30000. |
+
+The frontend (`med-clinical`, Angular) serves on port 4200 — keep `CORS_ORIGINS` in sync
+with it.
 
 ## Architecture
 
@@ -68,37 +79,52 @@ never been applied to it, so every request that touches data returns HTTP 500.
   never from `@prisma/client` directly, and never edit generated files.
 - `datasource db` in `schema.prisma` has **no `url`**; it comes from
   `prisma.config.ts` via `env('DATABASE_URL')`.
-- `PrismaService` builds its own `PrismaPg` driver adapter and reads
-  `process.env.DATABASE_URL` in its constructor. It is listed in `AppModule` **and
-  re-provided in every feature module** → one client/pool per module, and it is not
-  `@Global`. Don't add further duplicates; making it global is the right fix.
-- `JwtService` is likewise re-provided in every module. Import style is inconsistent
-  (relative almost everywhere, `src/prisma/prisma.service` in `auth.module.ts`) because
-  `tsconfig.baseUrl` is `./`. Prefer relative imports.
+- `PrismaService` is provided **once**, by the `@Global()` `src/prisma/prisma.module.ts`
+  using a `useFactory` with explicit `inject: [ConfigService]`. Do not re-provide it in a
+  feature module — every duplicate is another connection pool. The factory configures
+  `max`, `connectionTimeoutMillis` and `idleTimeoutMillis` from the `DATABASE_POOL_*`
+  env vars; `onModuleInit` connects eagerly and `onModuleDestroy` disconnects
+  (`enableShutdownHooks()` in `main.ts`).
+  The `inject: [...]` array is required: a `useFactory` in a plain object literal gets no
+  emitted design:paramtypes, so a bare `useFactory: (config: ConfigService) => …` resolves
+  `config` as `undefined` and crashes at boot.
+- `JwtService` is re-provided in `auth.module.ts` and `providers.module.ts`. Import style
+  is inconsistent (relative almost everywhere, `src/prisma/prisma.service` in
+  `auth.module.ts`) because `tsconfig.baseUrl` is `./`. Prefer relative imports.
 - Single migration `prisma/migrations/20260506130027_init` covers all 11 models. There
   has never been a second migration: any schema change needs `npx prisma migrate dev`
   and the generated SQL committed.
 
 ## Auth, tenancy and response shapes
 
-- `src/auth/auth.guard.ts` is a hand-rolled guard, registered **twice**: as `APP_GUARD`
-  in `app.module.ts` and again via `app.useGlobalGuards` in `main.ts`. Every request
-  runs it twice.
-- It calls `jwtService.decode()` — **no signature verification** — and checks `exp`
-  manually, so any well-formed JWT with a future `exp` is accepted. `src/auth/jwt.strategy.ts`
-  (Passport) is registered but never wired to a guard; it is the only place that would
-  verify properly.
+- `src/auth/auth.guard.ts` is a hand-rolled guard, registered exactly once as `APP_GUARD`
+  in `app.module.ts`. **Do not also add it via `app.useGlobalGuards` in `main.ts`** — that
+  made every request run the whole guard (and the limiter) twice.
+- It calls `jwtService.verify(token, { algorithms: ['HS256'] })` and reads `JWT_SECRET`
+  via `getOrThrow`, so a token signed with any other secret is rejected. Do not "optimise"
+  this back to `decode()`. `src/auth/jwt.strategy.ts` (Passport) is still registered but
+  never wired to a guard, and it is no longer needed as the only verifying path.
 - The JWT payload is `{ sub, email, role }` (`auth.service.ts`) but `CurrentUserData`
   declares `userId`. The guard maps `sub → userId` explicitly; **keep it that way** — it
   used to put the raw payload on the request, which made `user.userId` `undefined` in
   every controller and silently turned all tenant filters into no-ops. `@CurrentUser() user.userId`
   is the only supported way to read the caller's id.
 - Public routes are listed literally in `routesIgnores`: only `/api/auth/login`.
-  `/api/auth/register` therefore **requires an existing valid token**.
+  `/api/auth/register` therefore **requires an existing valid token** (the first `DOCTOR`
+  comes from the seed) and creates `ASSISTANT` users.
+- Rate limiting: `ThrottlerModule` defines a **single** throttler named `short`
+  (100/min). Login and register override it with `@Throttle({ short: { limit: 5 } })` and
+  `GET /services-costs/dolar/save` with `limit: 1`. Declaring extra *named* throttlers is
+  a trap: `ThrottlerGuard` runs every configured throttler on every route, so a strict
+  `auth` throttler silently caps the whole API at 5 requests/minute. The storage is
+  in-memory, so limits reset on restart and are not shared between instances.
+- `main.ts` applies Helmet, a strict `CORS_ORIGINS` allow-list (no `*`), `trust proxy`
+  for correct client IPs behind a reverse proxy, and `enableShutdownHooks()`.
 - Scoping rule: `patients`, `medical-histories` and `quotes` filter by `userId` (one
-  clinic per `User`). `providers`, `customize`, `services-costs`, `payment-info` and the
-  dolar rate are intentionally **global** (no `userId` column) — don't add a filter there
-  by mistake, and don't forget one where it belongs.
+  clinic per `User`) on **reads and writes** — the creates re-check that the referenced
+  patient belongs to the caller. `providers`, `customize`, `services-costs`,
+  `payment-info` and the dolar rate are intentionally **global** (no `userId` column) —
+  don't add a filter there by mistake, and don't forget one where it belongs.
 - Response envelopes are inconsistent: CRUD returns `{ status, message, data }`; `auth`
   and the `/dolar` endpoints return `{ success, message, data }`; list endpoints return
   a bare array. `src/common/api-response.ts` and `src/common/base.dto.ts` define helpers

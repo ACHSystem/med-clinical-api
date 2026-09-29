@@ -10,26 +10,26 @@ export class MedicalHistoriesController {
 
   @Get('patient/:patientId')
   async findAllByPatient(@Param('patientId') patientId: string, @CurrentUser() user: CurrentUserData) {
-    return await this.medicalHistoriesService.findAllByPatient(patientId, user.userId);
+    return await this.medicalHistoriesService.findAllByPatient(patientId, user.clinicId);
   }
 
   @Get(':id')
   async findOne(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
-    return await this.medicalHistoriesService.findOne(id, user.userId);
+    return await this.medicalHistoriesService.findOne(id, user.clinicId);
   }
 
   @Post()
   async create(@Body() dto: CreateMedicalHistoryDto, @CurrentUser() user: CurrentUserData) {
-    return await this.medicalHistoriesService.create(dto, user.userId);
+    return await this.medicalHistoriesService.create(dto, user.clinicId, user.userId);
   }
 
   @Put(':id')
   async update(@Param('id') id: string, @Body() dto: UpdateMedicalHistoryDto, @CurrentUser() user: CurrentUserData) {
-    return await this.medicalHistoriesService.update(id, dto, user.userId);
+    return await this.medicalHistoriesService.update(id, dto, user.clinicId);
   }
 
   @Delete(':id')
   async remove(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
-    return await this.medicalHistoriesService.remove(id, user.userId);
+    return await this.medicalHistoriesService.remove(id, user.clinicId);
   }
 }

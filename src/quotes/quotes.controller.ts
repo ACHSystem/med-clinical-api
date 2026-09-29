@@ -10,21 +10,21 @@ export class QuotesController {
 
   @Get()
   async getQuotes(@CurrentUser() user: CurrentUserData) {
-    return await this.quotesService.getQuotes(user.userId);
+    return await this.quotesService.getQuotes(user.clinicId);
   }
 
   @Post()
   async create(@Body() dto: CreateQuoteDto, @CurrentUser() user: CurrentUserData) {
-    return await this.quotesService.create(dto, user.userId);
+    return await this.quotesService.create(dto, user.clinicId, user.userId);
   }
 
   @Put(':id')
   async update(@Param('id') id: string, @Body() dto: UpdateQuoteDto, @CurrentUser() user: CurrentUserData) {
-    return await this.quotesService.update(id, dto, user.userId);
+    return await this.quotesService.update(id, dto, user.clinicId);
   }
 
   @Delete(':id')
   async remove(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
-    return await this.quotesService.remove(id, user.userId);
+    return await this.quotesService.remove(id, user.clinicId);
   }
 }

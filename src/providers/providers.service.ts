@@ -25,8 +25,8 @@ export class ProvidersService {
     return provider;
   }
 
-  async create(providers: ProviderDto) {
-    const provider = await this.prisma.provider.create({ data: providers });
+  async create(providers: ProviderDto, clinicId: string) {
+    const provider = await this.prisma.provider.create({ data: { ...providers, clinicId } });
     return {
       status: true,
       message: 'Proveedor agregado exitosamente',

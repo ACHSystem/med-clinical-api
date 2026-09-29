@@ -1,8 +1,8 @@
-import { Controller, Post, Get, Body } from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
+import { Body, Controller, Get, Post } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { LoginDto, RegisterDto } from './auth.dto';
+import { RegisterDto, LoginDto, SwitchClinicDto } from './auth.dto';
 import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
+import { Throttle } from '@nestjs/throttler';
 
 @Controller('auth')
 export class AuthController {
@@ -21,8 +21,23 @@ export class AuthController {
     return await this.authService.register(register);
   }
 
+  /** Consultorios a los que pertenece el usuario, para el selector del frontend. */
+  @Get('clinics')
+  async getClinics(@CurrentUser() user: CurrentUserData) {
+    return await this.authService.getClinics(user.userId);
+  }
+
+  /**
+   * Cambia el consultorio activo y devuelve un token nuevo. Un mismo medico puede
+   * trabajar en varios consultorios: el token lleva siempre el consultorio activo.
+   */
+  @Post('switch-clinic')
+  async switchClinic(@Body() dto: SwitchClinicDto, @CurrentUser() user: CurrentUserData) {
+    return await this.authService.switchClinic(user.userId, dto.clinicId);
+  }
+
   @Get('profile')
   async getProfile(@CurrentUser() user: CurrentUserData) {
-    return await this.authService.getProfile(user.userId);
+    return await this.authService.getProfile(user.userId, user.clinicId);
   }
 }

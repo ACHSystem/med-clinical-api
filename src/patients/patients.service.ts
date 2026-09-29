@@ -6,17 +6,17 @@ import { CreatePatientDto, UpdatePatientDto } from './patients.dto';
 export class PatientsService {
   constructor(private prisma: PrismaService) {}
 
-  async getPatients(userId: string) {
+  async getPatients(clinicId: string) {
     const patients = await this.prisma.patient.findMany({
-      where: { userId, isActive: true },
+      where: { clinicId, isActive: true },
       orderBy: { createdAt: 'desc' },
     });
     return patients;
   }
 
-  async findOne(id: string, userId: string) {
+  async findOne(id: string, clinicId: string) {
     const patient = await this.prisma.patient.findFirst({
-      where: { id, userId },
+      where: { id, clinicId },
     });
     if (!patient) {
       throw new NotFoundException('Paciente no encontrado');
@@ -24,7 +24,7 @@ export class PatientsService {
     return patient;
   }
 
-  async createPatient(dto: CreatePatientDto, userId: string) {
+  async createPatient(dto: CreatePatientDto, clinicId: string) {
     const patient = await this.prisma.patient.create({
       data: {
         name: dto.name,
@@ -36,7 +36,7 @@ export class PatientsService {
         gender: dto.gender,
         address: dto.address,
         notes: dto.notes || '',
-        userId,
+        clinicId,
       },
     });
 
@@ -47,8 +47,8 @@ export class PatientsService {
     };
   }
 
-  async update(id: string, dto: UpdatePatientDto, userId: string) {
-    await this.findOne(id, userId);
+  async update(id: string, dto: UpdatePatientDto, clinicId: string) {
+    await this.findOne(id, clinicId);
     const patient = await this.prisma.patient.update({
       where: { id },
       data: {
@@ -64,8 +64,8 @@ export class PatientsService {
     };
   }
 
-  async remove(id: string, userId: string) {
-    await this.findOne(id, userId);
+  async remove(id: string, clinicId: string) {
+    await this.findOne(id, clinicId);
     const patient = await this.prisma.patient.update({
       where: { id },
       data: { isActive: false },

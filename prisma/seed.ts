@@ -44,6 +44,33 @@ async function main() {
 
   console.log(`✅ Created users: ${doctor.name} ${doctor.lastName} (${doctor.role}) and ${assistant.name} ${assistant.lastName} (${assistant.role})`);
 
+  // El consultorio es el tenant: la doctora y su asistente son miembros del MISMO
+  // consultorio, por eso comparten pacientes. Un mismo usuario puede ser miembro
+  // de varios consultorios (findOrCreate de abajo mas el helper de membresia).
+  const clinic = await prisma.clinic.upsert({
+    where: { slug: 'consultorio-principal' },
+    update: {},
+    create: {
+      name: 'Consultorio Principal',
+      slug: 'consultorio-principal',
+      isActive: true,
+    },
+  });
+
+  await prisma.clinicUser.upsert({
+    where: { clinicId_userId: { clinicId: clinic.id, userId: doctor.id } },
+    update: { role: 'DOCTOR', isActive: true },
+    create: { clinicId: clinic.id, userId: doctor.id, role: 'DOCTOR', isActive: true },
+  });
+
+  await prisma.clinicUser.upsert({
+    where: { clinicId_userId: { clinicId: clinic.id, userId: assistant.id } },
+    update: { role: 'ASSISTANT', isActive: true },
+    create: { clinicId: clinic.id, userId: assistant.id, role: 'ASSISTANT', isActive: true },
+  });
+
+  console.log(`✅ Clinic "${clinic.name}" con 2 miembros (doctora + asistente, comparten pacientes)`);
+
   // Create 10 patients
   const patientsData = [
     { name: 'Ana', lastName: 'García', identify: 'ANA001', email: 'ana.garcia@email.com', phone: '+1234567890', birthDate: new Date('1985-03-15'), gender: 'Femenino', address: 'Calle Principal 123, Ciudad' },
@@ -63,7 +90,7 @@ async function main() {
       prisma.patient.create({
         data: {
           ...patient,
-          userId: doctor.id,
+          clinicId: clinic.id,
           isActive: true,
         },
       })
@@ -123,6 +150,7 @@ async function main() {
         phone: `+52${String(i).padStart(10, '0')}`,
         address: `Dirección ${providersData[i].name} #${i + 1}`,
         description: `Proveedor de ${providersData[i].type}`,
+        clinicId: clinic.id,
         isActive: true,
       },
     });
@@ -161,12 +189,46 @@ async function main() {
   const createdCosts = await Promise.all(
     costsData.map(cost =>
       prisma.serviceCost.create({
-        data: cost,
+        data: { ...cost, clinicId: clinic.id },
       })
     )
   );
 
   console.log(`✅ Created ${createdCosts.length} service costs`);
+
+  // Plantilla de ejemplo para que el constructor de formularios no arranque vacio
+  const existingTemplate = await prisma.formTemplate.findFirst({
+    where: { clinicId: clinic.id, name: 'Control de hipertensión' },
+  });
+
+  if (!existingTemplate) {
+    const template = await prisma.formTemplate.create({
+      data: {
+        name: 'Control de hipertensión',
+        condition: 'Hipertensión',
+        description: 'Seguimiento de presión arterial y tratamiento',
+        type: 'control',
+        clinicId: clinic.id,
+        isActive: true,
+      },
+    });
+
+    const fields = [
+      { name: 'Presión arterial sistólica', fieldType: 'number', unit: 'mmHg', isRequired: true, sortOrder: 1, step: 1, helpText: 'Ej: 120' },
+      { name: 'Presión arterial diastólica', fieldType: 'number', unit: 'mmHg', isRequired: true, sortOrder: 2, step: 1, helpText: 'Ej: 80' },
+      { name: 'Peso', fieldType: 'number', unit: 'kg', isRequired: false, sortOrder: 3, step: 1, minValue: 20, maxValue: 300 },
+      { name: 'Cumple con el tratamiento', fieldType: 'radio', options: ['Sí', 'No', 'Parcialmente'], isRequired: true, sortOrder: 1, step: 2 },
+      { name: 'Síntomas', fieldType: 'checkbox', options: ['Dolor de cabeza', 'Mareo', 'Edema', 'Ninguno'], isRequired: false, sortOrder: 2, step: 2 },
+    ];
+
+    for (const field of fields) {
+      await prisma.customField.create({
+        data: { ...field, options: field.options ?? [], templateId: template.id, isActive: true },
+      });
+    }
+
+    console.log(`✅ Created 1 form template "${template.name}" with ${fields.length} fields`);
+  }
 
   console.log('🎉 Seed completed!');
 }
