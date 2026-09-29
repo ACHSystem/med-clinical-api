@@ -2,6 +2,9 @@ import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from
 import { JwtService } from '@nestjs/jwt';
 
 export interface ITokenExp {
+    sub: string;
+    email: string;
+    role: string;
     iat: number;
     exp: number;
     expired: boolean;
@@ -35,7 +38,12 @@ export class AuthGuard implements CanActivate {
             if (payload.exp && payload.exp * 1000 < Date.now()) {
                 throw new UnauthorizedException('Token inválido o expirado');
             }
-            request['user'] = payload;
+            // CurrentUserData expone la id como `userId`, pero el payload usa `sub`
+            request['user'] = {
+                userId: payload.sub,
+                email: payload.email,
+                role: payload.role,
+            };
             return true;
         } catch (err) {
             throw new UnauthorizedException('Token inválido o expirado');
