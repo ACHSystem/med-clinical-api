@@ -227,7 +227,7 @@ Global prefix `/api`. Every route requires `Authorization: Bearer <token>` excep
 | `POST` | `/customize` | Global. |
 | `PUT` | `/customize/:id` | Global. |
 | `DELETE` | `/customize/:id` | Global soft delete. |
-| `PUT` | `/customize/reorder` | **Unreachable** — shadowed by `PUT /customize/:id`. |
+| `PUT` | `/customize/reorder` | **Unreachable** — shadowed by `PUT /customize/:id` (verified: the request reaches `customField.findUnique`). |
 | `GET` | `/providers` | Global. |
 | `POST` | `/providers` | Global. |
 | `PUT` | `/providers/:id` | Global. |
