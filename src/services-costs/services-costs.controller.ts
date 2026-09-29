@@ -1,7 +1,7 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ServicesCostsService } from './services-costs.service';
 import { ServiceCostDto } from './services-costs.dto';
-import { AuthGuard } from '../auth/auth.guard';
 
 @Controller('services-costs')
 export class ServicesCostsController {
@@ -16,6 +16,9 @@ export class ServicesCostsController {
   async getDolar() {
     return await this.servicesCostsService.getCurrentDolar();
   }
+
+  /** Consulta una API externa y escribe en la base: 1 por minuto. */
+  @Throttle({ dolar: { limit: 1, ttl: 60_000 } })
   @Get('dolar/save')
   async saveDolar() {
     return await this.servicesCostsService.saveDolarAutomatic();

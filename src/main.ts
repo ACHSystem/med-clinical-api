@@ -1,13 +1,28 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { BadRequestException, ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { AllExceptionsFilter } from './filters/exception.filter';
-import { AuthGuard } from './auth/auth.guard';
-import { JwtService } from '@nestjs/jwt';
+import helmet from 'helmet';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.useGlobalGuards(new AuthGuard(app.get(JwtService)));
+  const config = app.get(ConfigService);
+
+  // El body lo limita el parser de Nest a 100kb por defecto
+  app.use(helmet());
+  // IP real del cliente detras de un balanceador/proxy (necesario para throttling por IP)
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
+  const corsOrigins = config.getOrThrow<string>('CORS_ORIGINS');
+  app.enableCors({
+    origin: corsOrigins.split(',').map((origin) => origin.trim()),
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    maxAge: 600,
+  });
+
+  // AuthGuard y ThrottlerGuard se registran como APP_GUARD en AppModule
   app.useGlobalFilters(new AllExceptionsFilter());
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true,
@@ -24,7 +39,8 @@ async function bootstrap() {
       return new BadRequestException(`Errores de validación: ${message}`);
     },
   }));
-  app.enableCors();
+  // Cierra Prisma y los sockets de forma ordenada en despliegues rolling
+  app.enableShutdownHooks();
   app.setGlobalPrefix('/api');
   await app.listen(process.env.PORT ?? 3000);
 }

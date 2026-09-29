@@ -17,6 +17,15 @@ export class MedicalHistoriesService {
     });
   }
 
+  /** Impide escribir una historia sobre un paciente de otra clinica (IDOR). */
+  private async assertOwnsPatient(patientId: string, userId: string) {
+    const patient = await this.prisma.patient.findFirst({ where: { id: patientId, userId } });
+    if (!patient) {
+      throw new NotFoundException('Paciente no encontrado');
+    }
+    return patient;
+  }
+
   async findOne(id: string, userId: string) {
     const history = await this.prisma.medicalHistory.findFirst({
       where: { id, user: { id: userId } },
@@ -28,6 +37,7 @@ export class MedicalHistoriesService {
   }
 
   async create(dto: CreateMedicalHistoryDto, userId: string) {
+    await this.assertOwnsPatient(dto.patientId, userId);
     const history = await this.prisma.medicalHistory.create({
       data: {
         title: dto.title || '',

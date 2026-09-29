@@ -3,7 +3,10 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcrypt';
 import 'dotenv/config';
 
-const connectionString = process.env.DATABASE_URL || 'postgresql://postgres:Earo282*@localhost:5432/medclinical';
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error('DATABASE_URL no esta definida: define la conexion en .env antes de ejecutar el seed.');
+}
 const adapter = new PrismaPg({ connectionString });
 const prisma = new PrismaClient({ adapter });
 

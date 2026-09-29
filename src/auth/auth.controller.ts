@@ -1,4 +1,5 @@
-import { Controller, Post, Get, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Body } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto, RegisterDto } from './auth.dto';
 import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
@@ -7,11 +8,14 @@ import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.
 export class AuthController {
   constructor(private authService: AuthService) {}
 
+  /** 5 intentos por minuto: frena el fuerza bruta contra credenciales. */
+  @Throttle({ auth: { limit: 5, ttl: 60_000 } })
   @Post('login')
   async login(@Body() credentials: LoginDto) {
     return await this.authService.login(credentials);
   }
 
+  @Throttle({ auth: { limit: 5, ttl: 60_000 } })
   @Post('register')
   async register(@Body() register: RegisterDto) {
     return await this.authService.register(register);

@@ -14,19 +14,21 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
   ) {
-    this.secretKey = this.configService.get<string>('JWT_SECRET') as string;
+    this.secretKey = this.configService.getOrThrow<string>('JWT_SECRET');
   }
 
   async login(credentials: LoginDto) {
     const { email, password } = credentials;
     const user = await this.prisma.user.findUnique({ where: { email } });
+
+    // Mismo mensaje para usuario inexistente y contraseña incorrecta: no enumerar cuentas
     if (!user) {
-      throw new UnauthorizedException('Usuario no encontrado');
+      throw new UnauthorizedException('Credenciales inválidas');
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
-      throw new UnauthorizedException('Contraseña invalida');
+      throw new UnauthorizedException('Credenciales inválidas');
     }
 
     if (!user.isActive) {

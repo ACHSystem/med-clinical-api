@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { PrismaService } from './prisma/prisma.service';
+import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { ProvidersModule } from './providers/providers.module';
 import { PatientsModule } from './patients/patients.module';
@@ -12,16 +12,34 @@ import { QuotesModule } from './quotes/quotes.module';
 import { PaymentModule } from './payment/payment.module';
 import { ConfigModule } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { AuthGuard } from './auth/auth.guard';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
+import { AuthGuard } from './auth/auth.guard';
+import * as Joi from 'joi';
 
 @Module({
   imports: [
-    AuthModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: ['.env.local', '.env'], // primero busca en .env.local
+      validationSchema: Joi.object({
+        DATABASE_URL: Joi.string().uri({ scheme: ['postgresql', 'postgres'] }).required(),
+        JWT_SECRET: Joi.string().min(32).required(),
+        PORT: Joi.number().port().default(3000),
+        CORS_ORIGINS: Joi.string().required(),
+        DATABASE_POOL_MAX: Joi.number().integer().min(1).max(100).default(10),
+        DATABASE_POOL_CONNECT_TIMEOUT_MS: Joi.number().integer().min(1000).default(5000),
+        DATABASE_POOL_IDLE_TIMEOUT_MS: Joi.number().integer().min(1000).default(30000),
+        NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
+      }),
     }),
+    ThrottlerModule.forRoot([
+      { name: 'short', ttl: 60_000, limit: 100 },
+      { name: 'auth', ttl: 60_000, limit: 5 },
+      { name: 'dolar', ttl: 60_000, limit: 1 },
+    ]),
+    PrismaModule,
+    AuthModule,
     ProvidersModule,
     PatientsModule,
     CustomizeModule,
@@ -33,12 +51,10 @@ import { APP_GUARD } from '@nestjs/core';
   controllers: [AppController],
   providers: [
     AppService,
-    PrismaService,
     JwtService,
-    {
-      provide: APP_GUARD,
-      useClass: AuthGuard, // se ejecuta primero
-    },
+    // El orden importa: primero limita el trafico, despues valida la sesion
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: AuthGuard },
   ],
 })
 export class AppModule { }

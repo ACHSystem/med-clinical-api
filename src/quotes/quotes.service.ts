@@ -27,6 +27,12 @@ export class QuotesService {
   }
 
   async create(quotes: CreateQuoteDto, userId: string) {
+    // El presupuesto no puede colgar de un paciente de otra clinica (IDOR)
+    const patient = await this.prisma.patient.findFirst({ where: { id: quotes.patientId, userId } });
+    if (!patient) {
+      throw new NotFoundException('Paciente no encontrado');
+    }
+
     const { items, ...quoteData } = quotes;
     const quote = await this.prisma.quote.create({
       data: {

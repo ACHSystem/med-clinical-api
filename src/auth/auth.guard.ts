@@ -1,13 +1,13 @@
 import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 
-export interface ITokenExp {
+export interface ITokenPayload {
     sub: string;
     email: string;
     role: string;
     iat: number;
     exp: number;
-    expired: boolean;
 }
 
 const routesIgnores = [
@@ -17,7 +17,10 @@ const routesIgnores = [
 @Injectable()
 export class AuthGuard implements CanActivate {
 
-    constructor(private jwtService: JwtService) { }
+    constructor(
+        private jwtService: JwtService,
+        private configService: ConfigService,
+    ) { }
 
     canActivate(context: ExecutionContext): boolean {
         const request: Request = context.switchToHttp().getRequest();
@@ -31,22 +34,33 @@ export class AuthGuard implements CanActivate {
 
         const authHeader = request.headers['authorization'];
         if (!authHeader) throw new UnauthorizedException('Token no enviado');
-        const token = authHeader.replace('Bearer ', '');
 
+        const [type, token] = authHeader.split(' ');
+        if (type !== 'Bearer' || !token) {
+            throw new UnauthorizedException('Token no enviado');
+        }
+
+        let payload: ITokenPayload;
         try {
-            const payload: ITokenExp = this.jwtService.decode(token);
-            if (payload.exp && payload.exp * 1000 < Date.now()) {
-                throw new UnauthorizedException('Token inválido o expirado');
-            }
-            // CurrentUserData expone la id como `userId`, pero el payload usa `sub`
-            request['user'] = {
-                userId: payload.sub,
-                email: payload.email,
-                role: payload.role,
-            };
-            return true;
+            // Se verifica la firma: decode() solo lee el payload y aceptaba cualquier token
+            payload = this.jwtService.verify(token, {
+                secret: this.configService.getOrThrow<string>('JWT_SECRET'),
+                algorithms: ['HS256'],
+            });
         } catch (err) {
             throw new UnauthorizedException('Token inválido o expirado');
         }
+
+        if (!payload.sub) {
+            throw new UnauthorizedException('Token inválido o expirado');
+        }
+
+        // CurrentUserData expone la id como `userId`, pero el payload usa `sub`
+        request['user'] = {
+            userId: payload.sub,
+            email: payload.email,
+            role: payload.role,
+        };
+        return true;
     }
 }
