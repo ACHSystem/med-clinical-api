@@ -9,13 +9,13 @@ export class AuthController {
   constructor(private authService: AuthService) {}
 
   /** 5 intentos por minuto: frena el fuerza bruta contra credenciales. */
-  @Throttle({ auth: { limit: 5, ttl: 60_000 } })
+  @Throttle({ short: { limit: 5, ttl: 60_000 } })
   @Post('login')
   async login(@Body() credentials: LoginDto) {
     return await this.authService.login(credentials);
   }
 
-  @Throttle({ auth: { limit: 5, ttl: 60_000 } })
+  @Throttle({ short: { limit: 5, ttl: 60_000 } })
   @Post('register')
   async register(@Body() register: RegisterDto) {
     return await this.authService.register(register);

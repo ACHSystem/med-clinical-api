@@ -33,10 +33,10 @@ import * as Joi from 'joi';
         NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
       }),
     }),
+    // Un unico limitador global; las rutas criticas lo sobrescriben con @Throttle.
+    // Varios limitadores con nombre se aplicarian a TODAS las rutas, no solo a las decoradas.
     ThrottlerModule.forRoot([
       { name: 'short', ttl: 60_000, limit: 100 },
-      { name: 'auth', ttl: 60_000, limit: 5 },
-      { name: 'dolar', ttl: 60_000, limit: 1 },
     ]),
     PrismaModule,
     AuthModule,

@@ -18,7 +18,7 @@ export class ServicesCostsController {
   }
 
   /** Consulta una API externa y escribe en la base: 1 por minuto. */
-  @Throttle({ dolar: { limit: 1, ttl: 60_000 } })
+  @Throttle({ short: { limit: 1, ttl: 60_000 } })
   @Get('dolar/save')
   async saveDolar() {
     return await this.servicesCostsService.saveDolarAutomatic();

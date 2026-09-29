@@ -12,12 +12,18 @@ import { PrismaService } from './prisma.service';
     {
       provide: PrismaService,
       inject: [ConfigService],
+      // Joi valida y convierte los numeros, pero @nestjs/config los vuelve a escribir
+      // en process.env como string: sin Number() el pool recibiria "10", no 10.
       useFactory: (config: ConfigService) =>
         new PrismaService({
           connectionString: config.getOrThrow<string>('DATABASE_URL'),
-          max: config.get<number>('DATABASE_POOL_MAX') ?? 10,
-          connectionTimeoutMillis: config.get<number>('DATABASE_POOL_CONNECT_TIMEOUT_MS') ?? 5_000,
-          idleTimeoutMillis: config.get<number>('DATABASE_POOL_IDLE_TIMEOUT_MS') ?? 30_000,
+          max: Number(config.get<string>('DATABASE_POOL_MAX') ?? 10),
+          connectionTimeoutMillis: Number(
+            config.get<string>('DATABASE_POOL_CONNECT_TIMEOUT_MS') ?? 5_000,
+          ),
+          idleTimeoutMillis: Number(
+            config.get<string>('DATABASE_POOL_IDLE_TIMEOUT_MS') ?? 30_000,
+          ),
         }),
     },
   ],

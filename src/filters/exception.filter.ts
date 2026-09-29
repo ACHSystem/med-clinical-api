@@ -26,6 +26,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
                 typeof res === 'string'
                     ? res
                     : (res as any).message || (res as any).error;
+            // No filtrar el nombre de la clase de exception al cliente
+            message = String(message).replace(/^[A-Za-z]*Exception:\s*/, '');
         } else {
             this.logger.error('Error: ' + exception);
             console.error(exception);
