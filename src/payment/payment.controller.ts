@@ -1,6 +1,6 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { PaymentService } from './payment.service';
-import { PaymentMethodDto } from './payment-info.dto';
+import { PaymentMethodDto, PaymentMethodListQueryDto } from './payment-info.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
 
@@ -9,8 +9,8 @@ export class PaymentController {
   constructor(private paymentService: PaymentService) {}
 
   @Get()
-  async findAll() {
-    return await this.paymentService.findAll();
+  async findAll(@Query() query: PaymentMethodListQueryDto, @CurrentUser() user: CurrentUserData) {
+    return await this.paymentService.findAll(user.clinicId, query);
   }
 
   @Post()

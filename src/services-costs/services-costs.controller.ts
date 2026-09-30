@@ -1,7 +1,7 @@
-import { Controller, Get, Post, Put, Delete, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ServicesCostsService } from './services-costs.service';
-import { ServiceCostDto } from './services-costs.dto';
+import { ServiceCostDto, ServiceCostListQueryDto } from './services-costs.dto';
 import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
 
 @Controller('services-costs')
@@ -9,8 +9,8 @@ export class ServicesCostsController {
   constructor(private servicesCostsService: ServicesCostsService) {}
 
   @Get()
-  async getServicesAndCosts() {
-    return await this.servicesCostsService.getServicesAndCosts();
+  async getServicesAndCosts(@Query() query: ServiceCostListQueryDto, @CurrentUser() user: CurrentUserData) {
+    return await this.servicesCostsService.getServicesAndCosts(user.clinicId, query);
   }
 
   @Get('dolar')

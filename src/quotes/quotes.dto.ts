@@ -1,5 +1,29 @@
 import { IsBoolean, IsDateString, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, IsArray, ValidateNested } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+import { PaginationQueryDto } from '../common/pagination.dto';
+
+export class QuoteListQueryDto extends PaginationQueryDto {
+  @Transform(({ value }) => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
+
+  @IsString()
+  @IsOptional()
+  status?: string;
+
+  @IsUUID()
+  @IsOptional()
+  patientId?: string;
+
+  @IsDateString()
+  @IsOptional()
+  createdFrom?: string;
+
+  @IsDateString()
+  @IsOptional()
+  createdTo?: string;
+}
 
 export class CreateQuoteItemDto {
   @IsString()

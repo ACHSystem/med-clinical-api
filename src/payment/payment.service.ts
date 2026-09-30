@@ -1,16 +1,39 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { PaymentMethodDto } from './payment-info.dto';
+import { toPaginatedResult } from '../common/pagination';
+import { PaymentMethodDto, PaymentMethodListQueryDto } from './payment-info.dto';
 
 @Injectable()
 export class PaymentService {
   constructor(private prisma: PrismaService) { }
 
-  async findAll() {
-    return this.prisma.paymentMethod.findMany({
-      where: { isActive: true },
-      orderBy: { createdAt: 'desc' },
-    });
+  async findAll(clinicId: string, query: PaymentMethodListQueryDto) {
+    const where = {
+      clinicId,
+      isActive: query.isActive ?? true,
+      ...(query.search
+        ? {
+            OR: [
+              { bank: { contains: query.search, mode: 'insensitive' as const } },
+              { identify: { contains: query.search, mode: 'insensitive' as const } },
+              { phone: { contains: query.search, mode: 'insensitive' as const } },
+              { email: { contains: query.search, mode: 'insensitive' as const } },
+              { account: { contains: query.search, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+    };
+    const skip = (query.page - 1) * query.limit;
+    const [methods, total] = await Promise.all([
+      this.prisma.paymentMethod.findMany({
+        where,
+        skip,
+        take: query.limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.paymentMethod.count({ where }),
+    ]);
+    return toPaginatedResult(methods, total, query.page, query.limit);
   }
 
   async findOne(id: string) {

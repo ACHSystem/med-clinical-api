@@ -1,4 +1,17 @@
 import { IsBoolean, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { PaginationQueryDto, parseBooleanQuery } from '../common/pagination.dto';
+
+export class ProviderListQueryDto extends PaginationQueryDto {
+  @IsString()
+  @IsOptional()
+  type?: string;
+
+  @Transform(parseBooleanQuery)
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
+}
 
 export class ProviderDto {
   @IsString()

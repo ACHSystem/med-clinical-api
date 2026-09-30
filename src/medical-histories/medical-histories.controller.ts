@@ -1,6 +1,6 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { MedicalHistoriesService } from './medical-histories.service';
-import { CreateMedicalHistoryDto, UpdateMedicalHistoryDto } from './medical-histories.dto';
+import { CreateMedicalHistoryDto, MedicalHistoryListQueryDto, UpdateMedicalHistoryDto } from './medical-histories.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
 
@@ -9,8 +9,12 @@ export class MedicalHistoriesController {
   constructor(private medicalHistoriesService: MedicalHistoriesService) {}
 
   @Get('patient/:patientId')
-  async findAllByPatient(@Param('patientId') patientId: string, @CurrentUser() user: CurrentUserData) {
-    return await this.medicalHistoriesService.findAllByPatient(patientId, user.clinicId);
+  async findAllByPatient(
+    @Param('patientId') patientId: string,
+    @Query() query: MedicalHistoryListQueryDto,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    return await this.medicalHistoriesService.findAllByPatient(patientId, user.clinicId, query);
   }
 
   @Get(':id')

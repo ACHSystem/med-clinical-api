@@ -1,17 +1,48 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreatePatientDto, UpdatePatientDto } from './patients.dto';
+import { toPaginatedResult } from '../common/pagination';
+import { CreatePatientDto, PatientListQueryDto, UpdatePatientDto } from './patients.dto';
 
 @Injectable()
 export class PatientsService {
   constructor(private prisma: PrismaService) {}
 
-  async getPatients(clinicId: string) {
-    const patients = await this.prisma.patient.findMany({
-      where: { clinicId, isActive: true },
-      orderBy: { createdAt: 'desc' },
-    });
-    return patients;
+  async getPatients(clinicId: string, query: PatientListQueryDto) {
+    const where = {
+      clinicId,
+      isActive: query.isActive ?? true,
+      ...(query.gender ? { gender: query.gender } : {}),
+      ...(query.createdFrom || query.createdTo
+        ? {
+            createdAt: {
+              ...(query.createdFrom ? { gte: new Date(query.createdFrom) } : {}),
+              ...(query.createdTo ? { lte: new Date(query.createdTo) } : {}),
+            },
+          }
+        : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { name: { contains: query.search, mode: 'insensitive' as const } },
+              { lastName: { contains: query.search, mode: 'insensitive' as const } },
+              { identify: { contains: query.search, mode: 'insensitive' as const } },
+              { email: { contains: query.search, mode: 'insensitive' as const } },
+              { phone: { contains: query.search, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+    };
+    const skip = (query.page - 1) * query.limit;
+    const [patients, total] = await Promise.all([
+      this.prisma.patient.findMany({
+        where,
+        skip,
+        take: query.limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.patient.count({ where }),
+    ]);
+    return toPaginatedResult(patients, total, query.page, query.limit);
   }
 
   async findOne(id: string, clinicId: string) {

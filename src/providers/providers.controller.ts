@@ -1,6 +1,6 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { ProvidersService } from './providers.service';
-import { ProviderDto, ProviderServiceDto } from './providers.dto';
+import { ProviderDto, ProviderListQueryDto, ProviderServiceDto } from './providers.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
 
@@ -9,8 +9,8 @@ export class ProvidersController {
   constructor(private providersService: ProvidersService) {}
 
   @Get()
-  async getProviders() {
-    return await this.providersService.getProviders();
+  async getProviders(@Query() query: ProviderListQueryDto, @CurrentUser() user: CurrentUserData) {
+    return await this.providersService.getProviders(user.clinicId, query);
   }
 
   @Post()

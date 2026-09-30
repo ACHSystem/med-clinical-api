@@ -224,43 +224,43 @@ is limited to `CORS_ORIGINS`. Rate limits: 100/min per IP overall, 5/min on
 | `POST` | `/auth/register` | Requires a token (gap: add to `routesIgnores`). |
 | `GET` | `/auth/profile` | Scoped. |
 | `GET` | `/` | Nest hello-world stub. |
-| `GET` | `/patients` | Scoped list, bare array. |
+| `GET` | `/patients` | Scoped, paginated; filters by text, gender, active status and creation dates. |
 | `GET` | `/patients/:id` | Scoped. |
 | `POST` | `/patients` | Scoped. |
 | `PUT` | `/patients/:id` | Scoped. `lastName`/`identify` are not updatable. |
 | `DELETE` | `/patients/:id` | Scoped soft delete. |
-| `GET` | `/medical-histories/patient/:patientId` | Scoped; verifies the patient belongs to the caller. |
+| `GET` | `/medical-histories/patient/:patientId` | Scoped, paginated; verifies patient and filters by text, type and creation dates. |
 | `GET` | `/medical-histories/:id` | Scoped. |
 | `POST` | `/medical-histories` | Scoped; rejects a `patientId` from another clinic and assigns author from token. |
 | `PUT` | `/medical-histories/:id` | Scoped. |
 | `DELETE` | `/medical-histories/:id` | Scoped **hard** delete. |
-| `GET` | `/customize` | Scoped to active clinic, ordered by `sortOrder`. |
+| `GET` | `/customize` | Scoped, paginated; filters by text, type, step, required and active status. |
 | `GET` | `/customize/:id` | Scoped to active clinic. |
 | `POST` | `/customize` | Scoped; associates field with the clinic's `General` template. |
 | `PUT` | `/customize/:id` | Scoped to active clinic. |
 | `DELETE` | `/customize/:id` | Scoped soft delete. |
 | `PUT` | `/customize/reorder` | Scoped to active clinic. |
-| `GET` | `/providers` | Global. |
-| `POST` | `/providers` | Global. |
-| `PUT` | `/providers/:id` | Global. |
-| `DELETE` | `/providers/:id` | Global soft delete. |
+| `GET` | `/providers` | Scoped, paginated; filters by text, type and active status. |
+| `POST` | `/providers` | Associates provider to active clinic. |
+| `PUT` | `/providers/:id` | Currently not clinic-scoped. |
+| `DELETE` | `/providers/:id` | Currently not clinic-scoped; soft delete. |
 | `POST` | `/providers/:id/services` | Global. |
 | `PUT` | `/providers/services/:serviceId` | Global. |
 | `DELETE` | `/providers/services/:serviceId` | Global soft delete. |
-| `GET` | `/services-costs` | Global list. |
+| `GET` | `/services-costs` | Scoped, paginated; filters by text, active status and price range. |
 | `GET` | `/services-costs/dolar` | Last stored rate. |
 | `GET` | `/services-costs/dolar/save` | Fetches the external API and stores a new rate. |
-| `POST` | `/services-costs` | Global. |
-| `PUT` | `/services-costs/:id` | Global. |
-| `DELETE` | `/services-costs/:id` | Global soft delete. |
-| `GET` | `/quotes` | Scoped list with `patient` + `items`. |
+| `POST` | `/services-costs` | Associates cost to active clinic. |
+| `PUT` | `/services-costs/:id` | Currently not clinic-scoped. |
+| `DELETE` | `/services-costs/:id` | Currently not clinic-scoped; soft delete. |
+| `GET` | `/quotes` | Scoped, paginated with `patient` + `items`; filters by text, status, patient, active status and creation dates. |
 | `POST` | `/quotes` | Scoped; rejects a `patientId` owned by another user. |
 | `PUT` | `/quotes/:id` | Scoped. |
 | `DELETE` | `/quotes/:id` | Scoped soft delete. |
-| `GET` | `/payment-info` | Currently unfiltered by clinic. |
-| `POST` | `/payment-info` | Stores the active clinic from the authenticated user. |
-| `PUT` | `/payment-info/:id` | Currently unfiltered by clinic. |
-| `DELETE` | `/payment-info/:id` | Currently unfiltered by clinic. |
+| `GET` | `/payment-info` | Scoped, paginated; filters by text and active status. |
+| `POST` | `/payment-info` | Associates method to active clinic. |
+| `PUT` | `/payment-info/:id` | Currently not clinic-scoped. |
+| `DELETE` | `/payment-info/:id` | Currently not clinic-scoped. |
 
 No `GET /quotes/:id`, `/providers/:id` or `/services-costs/:id` route exists even though
 the services implement `findOne` for some of them.

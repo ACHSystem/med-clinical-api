@@ -1,20 +1,49 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateMedicalHistoryDto, UpdateMedicalHistoryDto } from './medical-histories.dto';
+import { toPaginatedResult } from '../common/pagination';
+import { CreateMedicalHistoryDto, MedicalHistoryListQueryDto, UpdateMedicalHistoryDto } from './medical-histories.dto';
 
 @Injectable()
 export class MedicalHistoriesService {
   constructor(private prisma: PrismaService) {}
 
-  async findAllByPatient(patientId: string, clinicId: string) {
+  async findAllByPatient(patientId: string, clinicId: string, query: MedicalHistoryListQueryDto) {
     const patient = await this.prisma.patient.findFirst({ where: { id: patientId, clinicId } });
     if (!patient) {
       throw new NotFoundException('Paciente no encontrado');
     }
-    return this.prisma.medicalHistory.findMany({
-      where: { patientId, clinicId },
-      orderBy: { createdAt: 'desc' },
-    });
+    const where = {
+      patientId,
+      clinicId,
+      ...(query.type ? { type: query.type } : {}),
+      ...(query.createdFrom || query.createdTo
+        ? {
+            createdAt: {
+              ...(query.createdFrom ? { gte: new Date(query.createdFrom) } : {}),
+              ...(query.createdTo ? { lte: new Date(query.createdTo) } : {}),
+            },
+          }
+        : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { title: { contains: query.search, mode: 'insensitive' as const } },
+              { notes: { contains: query.search, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+    };
+    const skip = (query.page - 1) * query.limit;
+    const [histories, total] = await Promise.all([
+      this.prisma.medicalHistory.findMany({
+        where,
+        skip,
+        take: query.limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.medicalHistory.count({ where }),
+    ]);
+    return toPaginatedResult(histories, total, query.page, query.limit);
   }
 
   /** Impide escribir una historia sobre un paciente de otra clinica (IDOR). */

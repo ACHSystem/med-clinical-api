@@ -17,12 +17,23 @@ real, verificado contra la API en ejecución, no el intentions del código.
 
 | Tipo de endpoint | Forma de la respuesta |
 | --- | --- |
-| `GET` de lista | **Array desnudo**: `[{...}, {...}]` — sin `{ data }` |
+| `GET` de lista paginada | `{ "data": [...], "meta": { "page", "limit", "total", "totalPages" } }` |
 | `GET` de detalle | **Objeto desnudo**: `{...}` — sin `{ data }` |
 | `POST` / `PUT` / `DELETE` | `{ "status": true, "message": "...", "data": {...} }` |
 | `/auth/login`, `/auth/register` | `{ "success": true, "message": "...", "data": {...} }` |
 | `/services-costs/dolar*` | `{ "success": true, "message": "...", "data": {...} }` |
 | `GET /auth/profile` | **Objeto desnudo** (no va envuelto) |
+
+Las listas de pacientes, historiales por paciente, presupuestos, proveedores, costos,
+métodos de pago y campos personalizados aceptan `page` (default `1`), `limit` (default
+`20`, máximo `100`) y `search`. `search` ignora mayúsculas/minúsculas. La respuesta es:
+
+```json
+{
+  "data": [],
+  "meta": { "page": 1, "limit": 20, "total": 0, "totalPages": 0 }
+}
+```
 
 > La distinción es `status` frente a `success`. Un interceptor de Angular que solo
 > compruebe `status` ROMPE el login. Lo seguro es: si hay `data` úsala, y comprueba
@@ -94,10 +105,8 @@ sexto responde `429`; el límite se reabre 60 s después del primero de la venta
 token **en lecturas y escrituras**: pedir un recurso de otra clínica
 devuelve `404`, nunca `403`, y nunca se puede escribir sobre un paciente ajeno.
 
-`services-costs` guarda el `clinicId` del consultorio activo al crear un servicio; sin
-embargo, sus endpoints de lectura, actualización y eliminación todavía no filtran por
-clínica. `payment-info` también guarda el `clinicId` al crear, pero sus otras rutas aún
-no filtran por clínica. El dólar es global.
+Los listados de `services-costs` y `payment-info` se filtran por el consultorio activo.
+Sus rutas de actualización y eliminación aún no filtran por clínica. El dólar es global.
 
 *** Update File: c:\Users\default.LAPTOP-OBBTCLMD\Desktop\Projects\Sistema de Historias medicas y Nutricion\med-clinical-api\docs\API.md
 
@@ -451,7 +460,7 @@ Base: `/api/patients`. Todo filtrado por clínica.
 
 | Método | Ruta | Body | Respuesta |
 | --- | --- | --- | --- |
-| `GET` | `/patients` | — | `200 Patient[]` (solo `isActive: true`, orden `createdAt desc`) |
+| `GET` | `/patients` | Query: `page`, `limit`, `search`, `gender`, `isActive`, `createdFrom`, `createdTo` | `200 { data: Patient[], meta }` |
 | `GET` | `/patients/:id` | — | `200 Patient` · `404` |
 | `POST` | `/patients` | `CreatePatientRequest` (requiere Bearer token; `clinicId` se toma del consultorio activo) | `201 { status, message, data: Patient }` |
 | `PUT` | `/patients/:id` | `UpdatePatientRequest` | `200 { status, message, data: Patient }` |
@@ -459,11 +468,10 @@ Base: `/api/patients`. Todo filtrado por clínica.
 
 **Filtros y orden**
 
-- El endpoint **no acepta query params**: no hay `?search=`, `?page=`, `?limit=` ni
-  filtros por `gender`/`isActive`. La búsqueda y el orden son **responsabilidad del
-  frontend**.
-- El servidor aplica solo: `clinicId = consultorio activo del token` **y** `isActive: true`, ordenados por
-  `createdAt` descendente.
+- `search` busca por nombre, apellido, identificación, email o teléfono; `gender` filtra
+  por sexo; `isActive` permite incluir activos (`true`, default) o inactivos (`false`).
+- `createdFrom` y `createdTo` filtran `createdAt` (ISO 8601). Se restringe por el
+  consultorio activo del token y se ordena por `createdAt` descendente.
 - `GET /patients/:id` **no** filtra por `isActive`: un paciente borrado (soft delete)
   sigue siendo obtenible por id, aunque no aparezca en la lista.
 
@@ -491,7 +499,7 @@ Base: `/api/medical-histories`.
 
 | Método | Ruta | Body | Respuesta |
 | --- | --- | --- | --- |
-| `GET` | `/medical-histories/patient/:patientId` | — | `200 MedicalHistory[]` (`createdAt desc`) · `404` si el paciente no es tuyo |
+| `GET` | `/medical-histories/patient/:patientId` | Query: `page`, `limit`, `search`, `type`, `createdFrom`, `createdTo` | `200 { data: MedicalHistory[], meta }` · `404` si el paciente no es de tu clínica |
 | `GET` | `/medical-histories/:id` | — | `200 MedicalHistory` · `404` |
 | `POST` | `/medical-histories` | `CreateMedicalHistoryRequest` (requiere Bearer token; `clinicId` y `createdById` se asignan desde el usuario autenticado) | `201 { status, message, data: MedicalHistory }` |
 | `PUT` | `/medical-histories/:id` | `UpdateMedicalHistoryRequest` | `200 { status, message, data: MedicalHistory }` |
@@ -510,7 +518,7 @@ El formulario se define en el módulo **Customize**:
 
 | Método | Ruta | Body | Respuesta |
 | --- | --- | --- | --- |
-| `GET` | `/customize` | — | `200 CustomField[]` de la clínica activa (`isActive: true`, `sortOrder asc`) |
+| `GET` | `/customize` | Query: `page`, `limit`, `search`, `fieldType`, `step`, `isRequired`, `isActive` | `200 { data: CustomField[], meta }` de la clínica activa |
 | `GET` | `/customize/:id` | — | `200 CustomField` de la clínica activa · `404 Campo no encontrado` |
 | `POST` | `/customize` | `CreateCustomFieldRequest` (requiere Bearer token; se asocia a `General` de la clínica activa) | `201 { status, message, data: CustomField }` |
 | `PUT` | `/customize/:id` | `UpdateCustomFieldRequest` | `200 { status, message, data: CustomField }` |
@@ -560,7 +568,7 @@ Base: `/api/quotes`.
 
 | Método | Ruta | Body | Respuesta |
 | --- | --- | --- | --- |
-| `GET` | `/quotes` | — | `200 Quote[]` con `patient` y `items` incluidos (solo `isActive: true`, `createdAt desc`) |
+| `GET` | `/quotes` | Query: `page`, `limit`, `search`, `status`, `patientId`, `isActive`, `createdFrom`, `createdTo` | `200 { data: Quote[], meta }` con `patient` y `items` incluidos |
 | `POST` | `/quotes` | `CreateQuoteRequest` (requiere Bearer token; `clinicId` y `createdById` se toman del usuario autenticado) | `201 { status, message, data: Quote }` con `patient` e `items` |
 | `PUT` | `/quotes/:id` | `UpdateQuoteRequest` | `200 { status, message, data: Quote }` |
 | `DELETE` | `/quotes/:id` | — | `200 { status, message, data: Quote }` |
@@ -592,7 +600,7 @@ Base: `/api/services-costs`.
 
 | Método | Ruta | Body | Respuesta |
 | --- | --- | --- | --- |
-| `GET` | `/services-costs` | — | `200 ServiceCost[]` (solo `isActive: true`, `createdAt desc`) |
+| `GET` | `/services-costs` | Query: `page`, `limit`, `search`, `isActive`, `minPrice`, `maxPrice` | `200 { data: ServiceCost[], meta }` (clínica activa, `createdAt desc`) |
 | `POST` | `/services-costs` | `CreateServiceCostRequest` (requiere Bearer token; `clinicId` se toma del consultorio activo del token) | `201 { status, message, data: ServiceCost }` |
 | `PUT` | `/services-costs/:id` | `CreateServiceCostRequest` (completo) | `200 { status, message, data: ServiceCost }` |
 | `DELETE` | `/services-costs/:id` | — | `200 { status, message, data: ServiceCost }` |
@@ -636,12 +644,12 @@ Por eso hay que mirar el campo `success` y no solo el status HTTP.
 
 ## 8. Módulo Providers
 
-Base: `/api/providers`. Al crear, el proveedor queda asociado al consultorio activo del
-token. Las rutas de lectura, actualización y eliminación todavía no filtran por clínica.
+Base: `/api/providers`. El listado filtra por el consultorio activo; las rutas de
+actualización y eliminación todavía no filtran por clínica.
 
 | Método | Ruta | Body | Respuesta |
 | --- | --- | --- | --- |
-| `GET` | `/providers` | — | `200 Provider[]` con `services` anidadas (solo proveedores `isActive: true`, `createdAt desc`) |
+| `GET` | `/providers` | Query: `page`, `limit`, `search`, `type`, `isActive` | `200 { data: Provider[], meta }` con `services` anidadas |
 | `POST` | `/providers` | `CreateProviderRequest` (requiere Bearer token; `clinicId` se toma del usuario autenticado) | `201 { status, message, data: Provider }` |
 | `PUT` | `/providers/:id` | `CreateProviderRequest` (completo) | `200 { status, message, data: Provider }` |
 | `DELETE` | `/providers/:id` | — | `200 { status, message, data: Provider }` |
@@ -666,12 +674,12 @@ envía como número y vuelve como string.
 
 ## 9. Módulo Payment Info
 
-Base: `/api/payment-info`. El alta asocia el método de pago al consultorio activo del
-token; las rutas de lectura, actualización y eliminación todavía no filtran por clínica.
+Base: `/api/payment-info`. El listado filtra por el consultorio activo; las rutas de
+actualización y eliminación todavía no filtran por clínica.
 
 | Método | Ruta | Body | Respuesta |
 | --- | --- | --- | --- |
-| `GET` | `/payment-info` | — | `200 PaymentMethod[]` (solo `isActive: true`, `createdAt desc`) |
+| `GET` | `/payment-info` | Query: `page`, `limit`, `search`, `isActive` | `200 { data: PaymentMethod[], meta }` (clínica activa, `createdAt desc`) |
 | `POST` | `/payment-info` | `CreatePaymentMethodRequest` (requiere Bearer token; `clinicId` se toma del usuario autenticado) | `201 { status, message, data: PaymentMethod }` |
 | `PUT` | `/payment-info/:id` | `CreatePaymentMethodRequest` (completo) | `200 { status, message, data: PaymentMethod }` |
 | `DELETE` | `/payment-info/:id` | — | `200 { status, message, data: PaymentMethod }` |

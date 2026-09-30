@@ -1,4 +1,13 @@
 import { IsBoolean, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { PaginationQueryDto, parseBooleanQuery } from '../common/pagination.dto';
+
+export class PaymentMethodListQueryDto extends PaginationQueryDto {
+  @Transform(parseBooleanQuery)
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
+}
 
 export class PaymentMethodDto {
   @IsString()

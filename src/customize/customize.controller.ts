@@ -1,6 +1,6 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { CustomizeService } from './customize.service';
-import { CreateCustomFieldDto, UpdateCustomFieldDto } from './customize.dto';
+import { CreateCustomFieldDto, CustomFieldListQueryDto, UpdateCustomFieldDto } from './customize.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
 
@@ -9,8 +9,8 @@ export class CustomizeController {
   constructor(private customizeService: CustomizeService) {}
 
   @Get()
-  async findAll(@CurrentUser() user: CurrentUserData) {
-    return await this.customizeService.findAll(user.clinicId);
+  async findAll(@Query() query: CustomFieldListQueryDto, @CurrentUser() user: CurrentUserData) {
+    return await this.customizeService.findAll(user.clinicId, query);
   }
 
   @Get(':id')

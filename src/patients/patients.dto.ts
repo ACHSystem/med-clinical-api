@@ -1,4 +1,25 @@
+import { Transform } from 'class-transformer';
 import { IsBoolean, IsDateString, IsEmail, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { PaginationQueryDto, parseBooleanQuery } from '../common/pagination.dto';
+
+export class PatientListQueryDto extends PaginationQueryDto {
+  @Transform(parseBooleanQuery)
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
+
+  @IsString()
+  @IsOptional()
+  gender?: string;
+
+  @IsDateString()
+  @IsOptional()
+  createdFrom?: string;
+
+  @IsDateString()
+  @IsOptional()
+  createdTo?: string;
+}
 
 export class CreatePatientDto {
   @IsString()

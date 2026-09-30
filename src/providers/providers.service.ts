@@ -1,17 +1,40 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { ProviderDto, ProviderServiceDto } from './providers.dto';
+import { toPaginatedResult } from '../common/pagination';
+import { ProviderDto, ProviderListQueryDto, ProviderServiceDto } from './providers.dto';
 
 @Injectable()
 export class ProvidersService {
   constructor(private prisma: PrismaService) { }
 
-  async getProviders() {
-    return this.prisma.provider.findMany({
-      where: { isActive: true },
-      include: { services: true },
-      orderBy: { createdAt: 'desc' },
-    });
+  async getProviders(clinicId: string, query: ProviderListQueryDto) {
+    const where = {
+      clinicId,
+      isActive: query.isActive ?? true,
+      ...(query.type ? { type: query.type } : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { name: { contains: query.search, mode: 'insensitive' as const } },
+              { businessName: { contains: query.search, mode: 'insensitive' as const } },
+              { identify: { contains: query.search, mode: 'insensitive' as const } },
+              { type: { contains: query.search, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+    };
+    const skip = (query.page - 1) * query.limit;
+    const [providers, total] = await Promise.all([
+      this.prisma.provider.findMany({
+        where,
+        include: { services: true },
+        skip,
+        take: query.limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.provider.count({ where }),
+    ]);
+    return toPaginatedResult(providers, total, query.page, query.limit);
   }
 
   async findOne(id: string) {

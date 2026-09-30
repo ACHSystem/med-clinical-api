@@ -1,6 +1,6 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { QuotesService } from './quotes.service';
-import { CreateQuoteDto, UpdateQuoteDto } from './quotes.dto';
+import { CreateQuoteDto, QuoteListQueryDto, UpdateQuoteDto } from './quotes.dto';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
 
@@ -9,8 +9,8 @@ export class QuotesController {
   constructor(private quotesService: QuotesService) {}
 
   @Get()
-  async getQuotes(@CurrentUser() user: CurrentUserData) {
-    return await this.quotesService.getQuotes(user.clinicId);
+  async getQuotes(@Query() query: QuoteListQueryDto, @CurrentUser() user: CurrentUserData) {
+    return await this.quotesService.getQuotes(user.clinicId, query);
   }
 
   @Post()

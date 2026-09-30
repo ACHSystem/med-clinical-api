@@ -1,16 +1,32 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateCustomFieldDto, UpdateCustomFieldDto } from './customize.dto';
+import { toPaginatedResult } from '../common/pagination';
+import { CreateCustomFieldDto, CustomFieldListQueryDto, UpdateCustomFieldDto } from './customize.dto';
 
 @Injectable()
 export class CustomizeService {
   constructor(private prisma: PrismaService) {}
 
-  async findAll(clinicId: string) {
-    return this.prisma.customField.findMany({
-      where: { isActive: true, template: { clinicId, isActive: true } },
-      orderBy: { sortOrder: 'asc' },
-    });
+  async findAll(clinicId: string, query: CustomFieldListQueryDto) {
+    const where = {
+      isActive: query.isActive ?? true,
+      ...(query.isRequired !== undefined ? { isRequired: query.isRequired } : {}),
+      ...(query.fieldType ? { fieldType: query.fieldType } : {}),
+      ...(query.step !== undefined ? { step: query.step } : {}),
+      ...(query.search ? { name: { contains: query.search, mode: 'insensitive' as const } } : {}),
+      template: { clinicId, isActive: true },
+    };
+    const skip = (query.page - 1) * query.limit;
+    const [fields, total] = await Promise.all([
+      this.prisma.customField.findMany({
+        where,
+        skip,
+        take: query.limit,
+        orderBy: [{ step: 'asc' }, { sortOrder: 'asc' }],
+      }),
+      this.prisma.customField.count({ where }),
+    ]);
+    return toPaginatedResult(fields, total, query.page, query.limit);
   }
 
   async findOne(id: string, clinicId: string) {

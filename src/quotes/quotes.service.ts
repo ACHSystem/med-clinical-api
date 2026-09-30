@@ -1,18 +1,47 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateQuoteDto, UpdateQuoteDto } from './quotes.dto';
+import { toPaginatedResult } from '../common/pagination';
+import { CreateQuoteDto, QuoteListQueryDto, UpdateQuoteDto } from './quotes.dto';
 
 @Injectable()
 export class QuotesService {
   constructor(private prisma: PrismaService) {}
 
-  async getQuotes(clinicId: string) {
-    const quotes = await this.prisma.quote.findMany({
-      where: { clinicId, isActive: true },
-      include: { patient: true, items: true },
-      orderBy: { createdAt: 'desc' },
-    });
-    return quotes;
+  async getQuotes(clinicId: string, query: QuoteListQueryDto) {
+    const where = {
+      clinicId,
+      isActive: query.isActive ?? true,
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.patientId ? { patientId: query.patientId } : {}),
+      ...(query.createdFrom || query.createdTo
+        ? {
+            createdAt: {
+              ...(query.createdFrom ? { gte: new Date(query.createdFrom) } : {}),
+              ...(query.createdTo ? { lte: new Date(query.createdTo) } : {}),
+            },
+          }
+        : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { title: { contains: query.search, mode: 'insensitive' as const } },
+              { description: { contains: query.search, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+    };
+    const skip = (query.page - 1) * query.limit;
+    const [quotes, total] = await Promise.all([
+      this.prisma.quote.findMany({
+        where,
+        include: { patient: true, items: true },
+        skip,
+        take: query.limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.quote.count({ where }),
+    ]);
+    return toPaginatedResult(quotes, total, query.page, query.limit);
   }
 
   async findOne(id: string, clinicId: string) {

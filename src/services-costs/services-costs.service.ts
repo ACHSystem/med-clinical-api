@@ -1,18 +1,45 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { DolarDTO, IDolar, ServiceCostDto } from './services-costs.dto';
+import { toPaginatedResult } from '../common/pagination';
+import { DolarDTO, IDolar, ServiceCostDto, ServiceCostListQueryDto } from './services-costs.dto';
 import axios from 'axios';
 
 @Injectable()
 export class ServicesCostsService {
   constructor(private prisma: PrismaService) { }
 
-  async getServicesAndCosts() {
-    const servicesAndCosts = await this.prisma.serviceCost.findMany({
-      where: { isActive: true },
-      orderBy: { createdAt: 'desc' },
-    });
-    return servicesAndCosts;
+  async getServicesAndCosts(clinicId: string, query: ServiceCostListQueryDto) {
+    const where = {
+      clinicId,
+      isActive: query.isActive ?? true,
+      ...(query.minPrice !== undefined || query.maxPrice !== undefined
+        ? {
+            price: {
+              ...(query.minPrice !== undefined ? { gte: query.minPrice } : {}),
+              ...(query.maxPrice !== undefined ? { lte: query.maxPrice } : {}),
+            },
+          }
+        : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { name: { contains: query.search, mode: 'insensitive' as const } },
+              { description: { contains: query.search, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+    };
+    const skip = (query.page - 1) * query.limit;
+    const [servicesAndCosts, total] = await Promise.all([
+      this.prisma.serviceCost.findMany({
+        where,
+        skip,
+        take: query.limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.serviceCost.count({ where }),
+    ]);
+    return toPaginatedResult(servicesAndCosts, total, query.page, query.limit);
   }
 
   async findOne(id: string) {
