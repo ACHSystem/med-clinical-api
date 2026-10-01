@@ -1,31 +1,90 @@
-import { IsBoolean, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
-import { Min } from 'class-validator';
+import { IsArray, IsBoolean, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 import { PaginationQueryDto, parseBooleanQuery } from '../common/pagination.dto';
 
-export class CustomFieldListQueryDto extends PaginationQueryDto {
+class ActiveQueryDto extends PaginationQueryDto {
   @Transform(parseBooleanQuery)
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+}
 
+export class FormTemplateListQueryDto extends ActiveQueryDto {
+  @IsString()
+  @IsOptional()
+  condition?: string;
+
+  @IsString()
+  @IsOptional()
+  type?: string;
+}
+
+export class CustomFieldListQueryDto extends ActiveQueryDto {
   @Transform(parseBooleanQuery)
   @IsBoolean()
   @IsOptional()
   isRequired?: boolean;
 
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  step?: number;
+
   @IsString()
   @IsOptional()
   fieldType?: string;
 
-  @Type(() => Number)
-  @Min(1)
-  @IsNumber()
+  @IsString()
   @IsOptional()
-  step?: number;
+  templateId?: string;
+}
+
+export class CreateFormTemplateDto {
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+
+  @IsString()
+  @IsOptional()
+  condition?: string;
+
+  @IsString()
+  @IsOptional()
+  description?: string;
+
+  @IsString()
+  @IsOptional()
+  type?: string;
+}
+
+export class UpdateFormTemplateDto {
+  @IsString()
+  @IsOptional()
+  name?: string;
+
+  @IsString()
+  @IsOptional()
+  condition?: string;
+
+  @IsString()
+  @IsOptional()
+  description?: string;
+
+  @IsString()
+  @IsOptional()
+  type?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
 }
 
 export class CreateCustomFieldDto {
+  @IsString()
+  @IsOptional()
+  templateId?: string;
+
   @IsString()
   @IsNotEmpty()
   name!: string;
@@ -39,16 +98,43 @@ export class CreateCustomFieldDto {
   isRequired?: boolean;
 
   @IsString({ each: true })
+  @IsArray()
   @IsOptional()
   options?: string[];
 
-  @IsNumber()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
   @IsNotEmpty()
   sortOrder!: number;
 
-  @IsNumber()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @IsNotEmpty()
   step!: number;
+
+  @IsString()
+  @IsOptional()
+  unit?: string;
+
+  @IsString()
+  @IsOptional()
+  helpText?: string;
+
+  @IsString()
+  @IsOptional()
+  placeholder?: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @IsOptional()
+  minValue?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @IsOptional()
+  maxValue?: number;
 }
 
 export class UpdateCustomFieldDto {
@@ -65,18 +151,61 @@ export class UpdateCustomFieldDto {
   isRequired?: boolean;
 
   @IsString({ each: true })
+  @IsArray()
   @IsOptional()
   options?: string[];
 
-  @IsNumber()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
   @IsOptional()
   sortOrder?: number;
 
-  @IsNumber()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @IsOptional()
   step?: number;
+
+  @IsString()
+  @IsOptional()
+  unit?: string;
+
+  @IsString()
+  @IsOptional()
+  helpText?: string;
+
+  @IsString()
+  @IsOptional()
+  placeholder?: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @IsOptional()
+  minValue?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @IsOptional()
+  maxValue?: number;
 
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+}
+
+export class ReorderCustomFieldDto {
+  @IsString()
+  @IsNotEmpty()
+  id!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  sortOrder!: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  step!: number;
 }

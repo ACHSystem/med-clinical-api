@@ -318,6 +318,19 @@ export interface UpdateMedicalHistoryRequest {
 }
 
 // ---------- Campos personalizados (formulario dinámico) ----------
+export interface FormTemplate {
+  id: string;
+  clinicId: string;
+  name: string;
+  condition: string | null;
+  description: string | null;
+  type: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  fields?: CustomField[];
+}
+
 export interface CustomField {
   id: string;
   templateId: string;
@@ -327,18 +340,29 @@ export interface CustomField {
   options: string[];     // valores para select / checkbox múltiple; [] si no aplica
   sortOrder: number;     // orden DENTRO del step
   step: number;          // número de paso/página del formulario (1 por defecto)
+  unit: string | null;
+  helpText: string | null;
+  placeholder: string | null;
+  minValue: number | null;
+  maxValue: number | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface CreateCustomFieldRequest {
+  templateId?: string;   // si se omite, usa/crea "General"
   name: string;
   fieldType: string;
   sortOrder: number;     // obligatorio, NÚMERO (no string)
   step: number;          // obligatorio, NÚMERO
   isRequired?: boolean;
   options?: string[];    // array de strings
+  unit?: string;
+  helpText?: string;
+  placeholder?: string;
+  minValue?: number;
+  maxValue?: number;
 }
 
 export interface UpdateCustomFieldRequest {
@@ -348,10 +372,30 @@ export interface UpdateCustomFieldRequest {
   options?: string[];
   sortOrder?: number;
   step?: number;
+  unit?: string;
+  helpText?: string;
+  placeholder?: string;
+  minValue?: number;
+  maxValue?: number;
   isActive?: boolean;
 }
 
-/** Petición de reordenación (ver §5.2: la ruta está rota). */
+export interface CreateFormTemplateRequest {
+  name: string;
+  condition?: string;
+  description?: string;
+  type?: string;
+}
+
+export interface UpdateFormTemplateRequest {
+  name?: string;
+  condition?: string;
+  description?: string;
+  type?: string;
+  isActive?: boolean;
+}
+
+/** Petición de reordenación; todos los campos deben ser de una misma plantilla. */
 export interface ReorderCustomField { id: string; sortOrder: number; step: number; }
 
 // ---------- Proveedores ----------
@@ -632,17 +676,27 @@ El formulario se define en el módulo **Customize**:
 
 | Método | Ruta | Body | Respuesta |
 | --- | --- | --- | --- |
-| `GET` | `/customize` | Query: `page`, `limit`, `search`, `fieldType`, `step`, `isRequired`, `isActive` | `200 { data: CustomField[], meta }` de la clínica activa |
-| `GET` | `/customize/:id` | — | `200 CustomField` de la clínica activa · `404 Campo no encontrado` |
-| `POST` | `/customize` | `CreateCustomFieldRequest` (requiere Bearer token; se asocia a `General` de la clínica activa) | `201 { status, message, data: CustomField }` |
-| `PUT` | `/customize/:id` | `UpdateCustomFieldRequest` | `200 { status, message, data: CustomField }` |
-| `DELETE` | `/customize/:id` | — | `200 { status, message, data: CustomField }` |
-| `PUT` | `/customize/reorder` | `ReorderCustomField[]` | `200 { status, message, data: CustomField[] }` (solo campos de la clínica activa) |
+| `GET` | `/customize` | Query: `page`, `limit`, `search`, `condition`, `type`, `isActive` | `200 { data: FormTemplate[], meta }`; cada plantilla incluye sus campos activos ordenados |
+| `GET` | `/customize/templates/:id` | — | `200 FormTemplate` con campos activos · `404 Plantilla no encontrada` |
+| `POST` | `/customize/templates` | `CreateFormTemplateRequest` | `201 { status, message, data: FormTemplate }` |
+| `PUT` | `/customize/templates/:id` | `UpdateFormTemplateRequest` | `200 { status, message, data: FormTemplate }` |
+| `DELETE` | `/customize/templates/:id` | — | Soft delete: desactiva la plantilla |
+| `GET` | `/customize/fields` | Query: `page`, `limit`, `search`, `templateId`, `fieldType`, `step`, `isRequired`, `isActive` | `200 { data: CustomField[], meta }` de la clínica activa |
+| `GET` | `/customize/fields/:id` | — | `200 CustomField` de la clínica activa · `404 Campo no encontrado` |
+| `POST` | `/customize/fields` | `CreateCustomFieldRequest` | `201 { status, message, data: CustomField }`; `templateId` es opcional y usa `General` si se omite |
+| `PUT` | `/customize/fields/:id` | `UpdateCustomFieldRequest` | `200 { status, message, data: CustomField }` |
+| `DELETE` | `/customize/fields/:id` | — | Soft delete del campo |
+| `PUT` | `/customize/fields/reorder` | `ReorderCustomField[]` | `200 { status, message, data: CustomField[] }`; solo campos de la clínica y de una plantilla |
+
+Se conservan las rutas legadas de campos: `/customize/:id`, `POST /customize`,
+`PUT /customize/:id`, `DELETE /customize/:id` y `PUT /customize/reorder`.
 
 ### 5.2 Reordenar campos
 
-La ruta literal `PUT /customize/reorder` se declara antes de `PUT /customize/:id` y
-rechaza el reordenamiento si algún campo no pertenece a la clínica activa.
+Las rutas literales de reordenamiento se declaran antes de las rutas `:id`. Se rechaza
+la operación si algún campo no pertenece a la clínica activa, si hay IDs repetidos o si
+los campos pertenecen a distintas plantillas. `sortOrder` es un entero desde 0 y `step`
+un entero desde 1.
 
 ### 5.3 `fieldType` no es un enum
 
@@ -665,7 +719,7 @@ para texto, y no confíes en que el valor esté en una lista fija:
 Reglas para construir el formulario:
 
 1. Agrupa por `step`: `fields.filter(f => f.step === n)` y ordena por `sortOrder asc`.
-   `GET /customize` ya viene ordenado por `sortOrder`, pero **no** por `step`.
+  Las respuestas de plantillas y campos vienen ordenadas por `step` y luego `sortOrder`.
 2. Marca como `required` los campos con `isRequired: true`; valida en cliente antes de
    enviar (el backend no lo comprueba).
 3. El **valor guardado** en `data` se decide en el frontend. Recomendación: guardar la
@@ -813,7 +867,6 @@ Todo lo siguiente está **verificado** contra la API en ejecución:
 | # | Ausencia / defecto | Impacto en el frontend |
 | --- | --- | --- |
 | 1 | Ningún endpoint acepta query params: no hay búsqueda, paginación, orden ni filtros | Filtrar y paginar en cliente; con muchos registros la lista llega entera |
-| 2 | `PUT /customize/reorder` inalcanzable (§5.2) | Usar `PUT /customize/:id` por campo, o pedir el arreglo |
 | 3 | `GET /services-costs/dolar` con cuerpo vacío cuando no hay tasas (§7.1) | Parsear texto, no JSON, y tratar `null` |
 | 4 | `/dolar` y `/dolar/save` cambian de forma según el resultado | Comprobar `success` además del status HTTP |
 | 5 | `Decimal` → string | `parseFloat` para cualquier cálculo |

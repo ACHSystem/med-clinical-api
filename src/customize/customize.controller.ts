@@ -1,7 +1,14 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query, ParseArrayPipe } from '@nestjs/common';
 import { CustomizeService } from './customize.service';
-import { CreateCustomFieldDto, CustomFieldListQueryDto, UpdateCustomFieldDto } from './customize.dto';
-import { AuthGuard } from '../auth/auth.guard';
+import {
+  CreateCustomFieldDto,
+  CreateFormTemplateDto,
+  CustomFieldListQueryDto,
+  FormTemplateListQueryDto,
+  ReorderCustomFieldDto,
+  UpdateCustomFieldDto,
+  UpdateFormTemplateDto,
+} from './customize.dto';
 import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
 
 @Controller('customize')
@@ -9,10 +16,72 @@ export class CustomizeController {
   constructor(private customizeService: CustomizeService) {}
 
   @Get()
-  async findAll(@Query() query: CustomFieldListQueryDto, @CurrentUser() user: CurrentUserData) {
-    return await this.customizeService.findAll(user.clinicId, query);
+  async getFormTemplates(@Query() query: FormTemplateListQueryDto, @CurrentUser() user: CurrentUserData) {
+    return await this.customizeService.getFormTemplates(user.clinicId, query);
   }
 
+  @Get('templates/:id')
+  async findTemplate(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
+    return await this.customizeService.findTemplate(id, user.clinicId);
+  }
+
+  @Post('templates')
+  async createTemplate(@Body() dto: CreateFormTemplateDto, @CurrentUser() user: CurrentUserData) {
+    return await this.customizeService.createTemplate(dto, user.clinicId);
+  }
+
+  @Put('templates/:id')
+  async updateTemplate(
+    @Param('id') id: string,
+    @Body() dto: UpdateFormTemplateDto,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    return await this.customizeService.updateTemplate(id, dto, user.clinicId);
+  }
+
+  @Delete('templates/:id')
+  async deactivateTemplate(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
+    return await this.customizeService.deactivateTemplate(id, user.clinicId);
+  }
+
+  @Get('fields')
+  async getFields(@Query() query: CustomFieldListQueryDto, @CurrentUser() user: CurrentUserData) {
+    return await this.customizeService.getFields(user.clinicId, query);
+  }
+
+  @Post('fields')
+  async createField(@Body() dto: CreateCustomFieldDto, @CurrentUser() user: CurrentUserData) {
+    return await this.customizeService.create(dto, user.clinicId);
+  }
+
+  @Put('fields/reorder')
+  async reorderFields(
+    @Body(new ParseArrayPipe({ items: ReorderCustomFieldDto })) fields: ReorderCustomFieldDto[],
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    return await this.customizeService.reorder(fields, user.clinicId);
+  }
+
+  @Get('fields/:id')
+  async findField(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
+    return await this.customizeService.findOne(id, user.clinicId);
+  }
+
+  @Put('fields/:id')
+  async updateField(
+    @Param('id') id: string,
+    @Body() dto: UpdateCustomFieldDto,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    return await this.customizeService.update(id, dto, user.clinicId);
+  }
+
+  @Delete('fields/:id')
+  async removeField(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
+    return await this.customizeService.remove(id, user.clinicId);
+  }
+
+  // Legacy field routes remain available for existing clients.
   @Get(':id')
   async findOne(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
     return await this.customizeService.findOne(id, user.clinicId);
@@ -24,7 +93,10 @@ export class CustomizeController {
   }
 
   @Put('reorder')
-  async reorder(@Body() fields: { id: string; sortOrder: number; step: number }[], @CurrentUser() user: CurrentUserData) {
+  async reorder(
+    @Body(new ParseArrayPipe({ items: ReorderCustomFieldDto })) fields: ReorderCustomFieldDto[],
+    @CurrentUser() user: CurrentUserData,
+  ) {
     return await this.customizeService.reorder(fields, user.clinicId);
   }
 
