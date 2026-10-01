@@ -3,11 +3,6 @@ import { IsBoolean, IsDateString, IsEmail, IsNotEmpty, IsOptional, IsString } fr
 import { PaginationQueryDto, parseBooleanQuery } from '../common/pagination.dto';
 
 export class PatientListQueryDto extends PaginationQueryDto {
-  @Transform(parseBooleanQuery)
-  @IsBoolean()
-  @IsOptional()
-  isActive?: boolean;
-
   @IsString()
   @IsOptional()
   gender?: string;

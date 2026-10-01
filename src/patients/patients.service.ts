@@ -14,7 +14,7 @@ export class PatientsService {
   async getPatients(clinicId: string, query: PatientListQueryDto) {
     const where = {
       clinicId,
-      isActive: query.isActive ?? true,
+      isActive: true,
       ...(query.gender ? { gender: query.gender } : {}),
       ...(query.search
         ? {
