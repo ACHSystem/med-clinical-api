@@ -1,7 +1,6 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { PatientsService } from './patients.service';
-import { CreatePatientDto, PatientListQueryDto, UpdatePatientDto } from './patients.dto';
-import { AuthGuard } from '../auth/auth.guard';
+import { PatientDto, PatientListQueryDto } from './patients.dto';
 import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
 
 @Controller('patients')
@@ -24,12 +23,12 @@ export class PatientsController {
   }
 
   @Post()
-  async create(@Body() dto: CreatePatientDto, @CurrentUser() user: CurrentUserData) {
+  async create(@Body() dto: PatientDto, @CurrentUser() user: CurrentUserData) {
     return await this.patientsService.createPatient(dto, user.clinicId);
   }
 
   @Put(':id')
-  async update(@Param('id') id: string, @Body() dto: UpdatePatientDto, @CurrentUser() user: CurrentUserData) {
+  async update(@Param('id') id: string, @Body() dto: PatientDto, @CurrentUser() user: CurrentUserData) {
     return await this.patientsService.updatePatient(id, dto, user.clinicId);
   }
 

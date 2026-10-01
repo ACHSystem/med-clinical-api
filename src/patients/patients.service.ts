@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { toPaginatedResult } from '../common/pagination';
-import { CreatePatientDto, PatientListQueryDto, UpdatePatientDto } from './patients.dto';
+import { PatientDto, PatientListQueryDto } from './patients.dto';
 import { MedicalHistoriesService } from 'src/medical-histories/medical-histories.service';
 
 @Injectable()
@@ -56,7 +56,7 @@ export class PatientsService {
     return patient;
   }
 
-  async createPatient(dto: CreatePatientDto, clinicId: string) {
+  async createPatient(dto: PatientDto, clinicId: string) {
     const findPatient = await this.prisma.patient.findFirst({
       where: {
         identify: dto.identify,
@@ -89,13 +89,20 @@ export class PatientsService {
     };
   }
 
-  async updatePatient(id: string, dto: UpdatePatientDto, clinicId: string) {
+  async updatePatient(id: string, dto: PatientDto, clinicId: string) {
     await this.findOne(id, clinicId);
     const patient = await this.prisma.patient.update({
       where: { id },
       data: {
-        ...dto,
+        name: dto.name,
+        lastName: dto.lastName,
+        identify: dto.identify,
+        email: dto.email,
+        phone: dto.phone,
         birthDate: dto.birthDate ? new Date(dto.birthDate) : undefined,
+        gender: dto.gender,
+        address: dto.address,
+        notes: dto.notes || '',
       },
     });
 

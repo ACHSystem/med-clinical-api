@@ -8,7 +8,7 @@ export class PatientListQueryDto extends PaginationQueryDto {
   gender?: string;
 }
 
-export class CreatePatientDto {
+export class PatientDto {
   @IsString()
   @IsNotEmpty()
   name!: string;
@@ -44,38 +44,4 @@ export class CreatePatientDto {
   @IsString()
   @IsOptional()
   notes?: string;
-}
-
-export class UpdatePatientDto {
-  @IsString()
-  @IsOptional()
-  name?: string;
-
-  @IsEmail()
-  @IsOptional()
-  email?: string;
-
-  @IsString()
-  @IsOptional()
-  phone?: string;
-
-  @IsDateString()
-  @IsOptional()
-  birthDate?: string;
-
-  @IsString()
-  @IsOptional()
-  gender?: string;
-
-  @IsString()
-  @IsOptional()
-  address?: string;
-
-  @IsString()
-  @IsOptional()
-  notes?: string;
-
-  @IsBoolean()
-  @IsOptional()
-  isActive?: boolean;
 }
