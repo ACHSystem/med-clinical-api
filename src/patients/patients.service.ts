@@ -5,31 +5,23 @@ import { CreatePatientDto, PatientListQueryDto, UpdatePatientDto } from './patie
 
 @Injectable()
 export class PatientsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   async getPatients(clinicId: string, query: PatientListQueryDto) {
     const where = {
       clinicId,
       isActive: query.isActive ?? true,
       ...(query.gender ? { gender: query.gender } : {}),
-      ...(query.createdFrom || query.createdTo
-        ? {
-            createdAt: {
-              ...(query.createdFrom ? { gte: new Date(query.createdFrom) } : {}),
-              ...(query.createdTo ? { lte: new Date(query.createdTo) } : {}),
-            },
-          }
-        : {}),
       ...(query.search
         ? {
-            OR: [
-              { name: { contains: query.search, mode: 'insensitive' as const } },
-              { lastName: { contains: query.search, mode: 'insensitive' as const } },
-              { identify: { contains: query.search, mode: 'insensitive' as const } },
-              { email: { contains: query.search, mode: 'insensitive' as const } },
-              { phone: { contains: query.search, mode: 'insensitive' as const } },
-            ],
-          }
+          OR: [
+            { name: { contains: query.search, mode: 'insensitive' as const } },
+            { lastName: { contains: query.search, mode: 'insensitive' as const } },
+            { identify: { contains: query.search, mode: 'insensitive' as const } },
+            { email: { contains: query.search, mode: 'insensitive' as const } },
+            { phone: { contains: query.search, mode: 'insensitive' as const } },
+          ],
+        }
         : {}),
     };
     const skip = (query.page - 1) * query.limit;
@@ -56,6 +48,16 @@ export class PatientsService {
   }
 
   async createPatient(dto: CreatePatientDto, clinicId: string) {
+    const findPatient = await this.prisma.patient.findFirst({
+      where: {
+        identify: dto.identify,
+      }
+    });
+
+    if (findPatient) {
+      throw new NotFoundException('Ya existe un Paciente con esta cedula');
+    }
+
     const patient = await this.prisma.patient.create({
       data: {
         name: dto.name,
@@ -78,7 +80,7 @@ export class PatientsService {
     };
   }
 
-  async update(id: string, dto: UpdatePatientDto, clinicId: string) {
+  async updatePatient(id: string, dto: UpdatePatientDto, clinicId: string) {
     await this.findOne(id, clinicId);
     const patient = await this.prisma.patient.update({
       where: { id },
@@ -95,7 +97,7 @@ export class PatientsService {
     };
   }
 
-  async remove(id: string, clinicId: string) {
+  async deletePatient(id: string, clinicId: string) {
     await this.findOne(id, clinicId);
     const patient = await this.prisma.patient.update({
       where: { id },

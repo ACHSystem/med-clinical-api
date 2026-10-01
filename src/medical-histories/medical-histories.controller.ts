@@ -1,20 +1,18 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { MedicalHistoriesService } from './medical-histories.service';
 import { CreateMedicalHistoryDto, MedicalHistoryListQueryDto, UpdateMedicalHistoryDto } from './medical-histories.dto';
-import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
 
 @Controller('medical-histories')
 export class MedicalHistoriesController {
   constructor(private medicalHistoriesService: MedicalHistoriesService) {}
 
-  @Get('patient/:patientId')
-  async findAllByPatient(
-    @Param('patientId') patientId: string,
+  @Get()
+  async getAllHistories(
     @Query() query: MedicalHistoryListQueryDto,
     @CurrentUser() user: CurrentUserData,
   ) {
-    return await this.medicalHistoriesService.findAllByPatient(patientId, user.clinicId, query);
+    return await this.medicalHistoriesService.getAllHistories(user.clinicId, query);
   }
 
   @Get(':id')
@@ -24,16 +22,16 @@ export class MedicalHistoriesController {
 
   @Post()
   async create(@Body() dto: CreateMedicalHistoryDto, @CurrentUser() user: CurrentUserData) {
-    return await this.medicalHistoriesService.create(dto, user.clinicId, user.userId);
+    return await this.medicalHistoriesService.createMedicalHistory(dto, user.clinicId, user.userId);
   }
 
   @Put(':id')
   async update(@Param('id') id: string, @Body() dto: UpdateMedicalHistoryDto, @CurrentUser() user: CurrentUserData) {
-    return await this.medicalHistoriesService.update(id, dto, user.clinicId);
+    return await this.medicalHistoriesService.updateMedicalHistory(id, dto, user.clinicId);
   }
 
   @Delete(':id')
   async remove(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
-    return await this.medicalHistoriesService.remove(id, user.clinicId);
+    return await this.medicalHistoriesService.deleteMedicalHistory(id, user.clinicId);
   }
 }

@@ -25,11 +25,11 @@ export class PatientsController {
 
   @Put(':id')
   async update(@Param('id') id: string, @Body() dto: UpdatePatientDto, @CurrentUser() user: CurrentUserData) {
-    return await this.patientsService.update(id, dto, user.clinicId);
+    return await this.patientsService.updatePatient(id, dto, user.clinicId);
   }
 
   @Delete(':id')
   async remove(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
-    return await this.patientsService.remove(id, user.clinicId);
+    return await this.patientsService.deletePatient(id, user.clinicId);
   }
 }

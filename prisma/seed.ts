@@ -1,4 +1,4 @@
-import { PrismaClient } from '../src/generated/prisma/client';
+import { PrismaClient, Prisma } from '../src/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcrypt';
 import 'dotenv/config';
@@ -9,6 +9,15 @@ if (!connectionString) {
 }
 const adapter = new PrismaPg({ connectionString });
 const prisma = new PrismaClient({ adapter });
+
+// Contadores para saber en cada run que se creo y que ya existia (seed idempotente).
+let created = 0;
+let skipped = 0;
+
+function tally(wasCreated: boolean) {
+  if (wasCreated) created++;
+  else skipped++;
+}
 
 async function main() {
   console.log('🌱 Starting seed...');
@@ -85,19 +94,28 @@ async function main() {
     { name: 'Roberto', lastName: 'Sánchez', identify: 'ROB010', email: 'roberto.sanchez@email.com', phone: '+1234567899', birthDate: new Date('1973-08-14'), gender: 'Masculino', address: 'Avenida Sur 741, Ciudad' },
   ];
 
-  const createdPatients = await Promise.all(
-    patientsData.map(patient =>
-      prisma.patient.create({
-        data: {
-          ...patient,
-          clinicId: clinic.id,
-          isActive: true,
-        },
-      })
-    )
-  );
+  // Patient.identify NO es unico en el schema (solo hay indice), asi que la guarda
+  // de idempotencia es findFirst por clinicId + identify, no upsert.
+  const patients: ((typeof patientsData)[number] & { id: string })[] = [];
+  let patientsCreated = 0;
+  for (const patient of patientsData) {
+    const existing = await prisma.patient.findFirst({
+      where: { clinicId: clinic.id, identify: patient.identify },
+    });
+    if (existing) {
+      patients.push({ ...patient, id: existing.id });
+      tally(false);
+      continue;
+    }
+    const createdPatient = await prisma.patient.create({
+      data: { ...patient, clinicId: clinic.id, isActive: true },
+    });
+    patients.push({ ...patient, id: createdPatient.id });
+    tally(true);
+    patientsCreated++;
+  }
 
-  console.log(`✅ Created ${createdPatients.length} patients`);
+  console.log(`✅ Patients: ${patients.length} (${patientsCreated} nuevos, ${patients.length - patientsCreated} ya existian)`);
 
   // Create 15 providers with 5 services each
   const providersData = [
@@ -136,43 +154,56 @@ async function main() {
     ['Ambulancia', 'Traslado Local', 'Traslado Nacional', 'Traslado Internacional', 'Servicio de Emergencia'],
   ];
 
-  let providerCount = 0;
+  const beforeProviders = created;
   let serviceCount = 0;
-
   for (let i = 0; i < providersData.length; i++) {
-    const provider = await prisma.provider.create({
-      data: {
-        name: providersData[i].name,
-        type: providersData[i].type,
-        businessName: providersData[i].businessName,
-        identify: providersData[i].identify,
-        email: `contacto${i + 1}@proveedor.com`,
-        phone: `+52${String(i).padStart(10, '0')}`,
-        address: `Dirección ${providersData[i].name} #${i + 1}`,
-        description: `Proveedor de ${providersData[i].type}`,
-        clinicId: clinic.id,
-        isActive: true,
-      },
+    // Provider.identify tampoco es unico: guarda por clinicId + identify.
+    let provider = await prisma.provider.findFirst({
+      where: { clinicId: clinic.id, identify: providersData[i].identify },
     });
-
-    const services = servicesData[i].map(serviceName =>
-      prisma.providerService.create({
+    if (provider) {
+      tally(false);
+    } else {
+      provider = await prisma.provider.create({
         data: {
-          name: serviceName,
-          description: `Servicio de ${serviceName}`,
-          price: Math.floor(Math.random() * 5000) + 500,
-          providerId: provider.id,
+          name: providersData[i].name,
+          type: providersData[i].type,
+          businessName: providersData[i].businessName,
+          identify: providersData[i].identify,
+          email: `contacto${i + 1}@proveedor.com`,
+          phone: `+52${String(i).padStart(10, '0')}`,
+          address: `Dirección ${providersData[i].name} #${i + 1}`,
+          description: `Proveedor de ${providersData[i].type}`,
+          clinicId: clinic.id,
           isActive: true,
         },
-      })
-    );
+      });
+      tally(true);
+    }
 
-    await Promise.all(services);
-    providerCount++;
-    serviceCount += services.length;
+    for (const serviceName of servicesData[i]) {
+      const existingService = await prisma.providerService.findFirst({
+        where: { providerId: provider.id, name: serviceName },
+      });
+      if (existingService) {
+        tally(false);
+      } else {
+        await prisma.providerService.create({
+          data: {
+            name: serviceName,
+            description: `Servicio de ${serviceName}`,
+            price: Math.floor(Math.random() * 5000) + 500,
+            providerId: provider.id,
+            isActive: true,
+          },
+        });
+        tally(true);
+      }
+      serviceCount++;
+    }
   }
 
-  console.log(`✅ Created ${providerCount} providers with ${serviceCount} services`);
+  console.log(`✅ Providers: ${providersData.length} con ${serviceCount} servicios (${created - beforeProviders} filas nuevas en esta seccion)`);
 
   // Create service costs
   const costsData = [
@@ -186,23 +217,33 @@ async function main() {
     { name: 'Procedimiento Menor', description: 'Procedimientos menores', price: 600 },
   ];
 
-  const createdCosts = await Promise.all(
-    costsData.map(cost =>
-      prisma.serviceCost.create({
+  let costCount = 0;
+  for (const cost of costsData) {
+    const existingCost = await prisma.serviceCost.findFirst({
+      where: { clinicId: clinic.id, name: cost.name },
+    });
+    if (existingCost) {
+      tally(false);
+    } else {
+      await prisma.serviceCost.create({
         data: { ...cost, clinicId: clinic.id },
-      })
-    )
-  );
+      });
+      tally(true);
+    }
+    costCount++;
+  }
 
-  console.log(`✅ Created ${createdCosts.length} service costs`);
+  console.log(`✅ Service costs: ${costCount}`);
 
   // Plantilla de ejemplo para que el constructor de formularios no arranque vacio
-  const existingTemplate = await prisma.formTemplate.findFirst({
+  // (FormTemplate tiene @@unique([clinicId, name]), asi que findFirst es suficiente).
+  let template = await prisma.formTemplate.findFirst({
     where: { clinicId: clinic.id, name: 'Control de hipertensión' },
+    include: { fields: { orderBy: { sortOrder: 'asc' } } },
   });
 
-  if (!existingTemplate) {
-    const template = await prisma.formTemplate.create({
+  if (!template) {
+    template = await prisma.formTemplate.create({
       data: {
         name: 'Control de hipertensión',
         condition: 'Hipertensión',
@@ -210,27 +251,238 @@ async function main() {
         type: 'control',
         clinicId: clinic.id,
         isActive: true,
+        fields: {
+          create: [
+            { name: 'Presión arterial sistólica', fieldType: 'number', unit: 'mmHg', isRequired: true, sortOrder: 1, step: 1, helpText: 'Ej: 120', options: [] },
+            { name: 'Presión arterial diastólica', fieldType: 'number', unit: 'mmHg', isRequired: true, sortOrder: 2, step: 1, helpText: 'Ej: 80', options: [] },
+            { name: 'Peso', fieldType: 'number', unit: 'kg', isRequired: false, sortOrder: 3, step: 1, minValue: 20, maxValue: 300, options: [] },
+            { name: 'Cumple con el tratamiento', fieldType: 'radio', options: ['Sí', 'No', 'Parcialmente'], isRequired: true, sortOrder: 1, step: 2 },
+            { name: 'Síntomas', fieldType: 'checkbox', options: ['Dolor de cabeza', 'Mareo', 'Edema', 'Ninguno'], isRequired: false, sortOrder: 2, step: 2 },
+          ],
+        },
       },
+      include: { fields: { orderBy: { sortOrder: 'asc' } } },
     });
-
-    const fields = [
-      { name: 'Presión arterial sistólica', fieldType: 'number', unit: 'mmHg', isRequired: true, sortOrder: 1, step: 1, helpText: 'Ej: 120' },
-      { name: 'Presión arterial diastólica', fieldType: 'number', unit: 'mmHg', isRequired: true, sortOrder: 2, step: 1, helpText: 'Ej: 80' },
-      { name: 'Peso', fieldType: 'number', unit: 'kg', isRequired: false, sortOrder: 3, step: 1, minValue: 20, maxValue: 300 },
-      { name: 'Cumple con el tratamiento', fieldType: 'radio', options: ['Sí', 'No', 'Parcialmente'], isRequired: true, sortOrder: 1, step: 2 },
-      { name: 'Síntomas', fieldType: 'checkbox', options: ['Dolor de cabeza', 'Mareo', 'Edema', 'Ninguno'], isRequired: false, sortOrder: 2, step: 2 },
-    ];
-
-    for (const field of fields) {
-      await prisma.customField.create({
-        data: { ...field, options: field.options ?? [], templateId: template.id, isActive: true },
-      });
-    }
-
-    console.log(`✅ Created 1 form template "${template.name}" with ${fields.length} fields`);
+    tally(true);
+    console.log(`✅ Created 1 form template "${template.name}" with ${template.fields.length} fields`);
+  } else {
+    tally(false);
+    console.log(`✅ Form template "${template.name}" ya existia con ${template.fields.length} fields`);
   }
 
-  console.log('🎉 Seed completed!');
+  // Tasa del dolar: GLOBAL a proposito (no tiene clinicId). Solo se siembra si la
+  // tabla esta vacia; despues de eso el historial es append-only y lo alimenta
+  // GET /services-costs/dolar/save.
+  let dolar = await prisma.dolar.findFirst({ orderBy: { date: 'desc' } });
+  if (!dolar) {
+    dolar = await prisma.dolar.create({
+      data: { value: 36.5, date: new Date() },
+    });
+    tally(true);
+    console.log(`✅ Created dolar rate ${dolar.value}`);
+  } else {
+    tally(false);
+    console.log(`✅ Dolar rate already exists (${dolar.value})`);
+  }
+
+  // Metodos de pago: los dos bancos con los que trabaja el consultorio.
+  const paymentMethodsData = [
+    { bank: 'Banesco', identify: '0134-0123-4567-8901', phone: '+582125550101', email: 'pagos@consultorio-principal.com', account: 'Ahorros 0134012345678901' },
+    { bank: 'Mercantil', identify: '0105-0987-6543-2109', phone: '+582125550102', email: 'pagos@consultorio-principal.com', account: 'Corriente 0105098765432109' },
+  ];
+
+  for (const method of paymentMethodsData) {
+    const existingMethod = await prisma.paymentMethod.findFirst({
+      where: { clinicId: clinic.id, bank: method.bank },
+    });
+    if (existingMethod) {
+      tally(false);
+    } else {
+      await prisma.paymentMethod.create({
+        data: { ...method, clinicId: clinic.id, isActive: true },
+      });
+      tally(true);
+    }
+  }
+
+  console.log(`✅ Payment methods: ${paymentMethodsData.length}`);
+
+  // Historias medicas de ejemplo. Las dos primeras van ligadas a la plantilla de
+  // hipertension con templateSnapshot (copia de la definicion en el momento del
+  // guardado), para que la historia siga siendo legible si la plantilla cambia.
+  const templateSnapshot = {
+    id: template.id,
+    name: template.name,
+    condition: template.condition,
+    type: template.type,
+    fields: template.fields.map(f => ({
+      name: f.name,
+      fieldType: f.fieldType,
+      isRequired: f.isRequired,
+      options: f.options,
+      sortOrder: f.sortOrder,
+      step: f.step,
+      unit: f.unit,
+      helpText: f.helpText,
+      minValue: f.minValue,
+      maxValue: f.maxValue,
+    })),
+  };
+
+  const ana = patients.find(p => p.identify === 'ANA001')!;
+  const carlos = patients.find(p => p.identify === 'CAR002')!;
+  const maria = patients.find(p => p.identify === 'MAR003')!;
+
+  const historiesData = [
+    {
+      title: 'Control de hipertensión - primer control',
+      type: 'control',
+      patientId: ana.id,
+      templateId: template.id,
+      templateSnapshot,
+      notes: 'Paciente acude por primera vez al programa de control. Se ajusta dosis de losartán.',
+      data: {
+        'Presión arterial sistólica': 148,
+        'Presión arterial diastólica': 94,
+        'Peso': 78.5,
+        'Cumple con el tratamiento': 'Parcialmente',
+        'Síntomas': ['Dolor de cabeza'],
+      },
+    },
+    {
+      title: 'Control de hipertensión - seguimiento mensual',
+      type: 'control',
+      patientId: ana.id,
+      templateId: template.id,
+      templateSnapshot,
+      notes: 'Buena adherencia tras el cambio de tratamiento. Sin edema.',
+      data: {
+        'Presión arterial sistólica': 126,
+        'Presión arterial diastólica': 82,
+        'Peso': 77.2,
+        'Cumple con el tratamiento': 'Sí',
+        'Síntomas': ['Ninguno'],
+      },
+    },
+    {
+      title: 'Primera consulta - dolor lumbar',
+      type: 'consulta',
+      patientId: carlos.id,
+      templateId: null,
+      templateSnapshot: null,
+      notes: 'Dolor lumbar de 3 semanas de evolución, sin irradiación. Se indica imagenología.',
+      data: {
+        motivoConsulta: 'Dolor lumbar de 3 semanas',
+        antecedentes: 'Ninguno relevante',
+        medicacionActual: 'Ibuprofeno 400 mg cada 12 h',
+      },
+    },
+    {
+      title: 'Evaluación nutricional inicial',
+      type: 'consulta',
+      patientId: maria.id,
+      templateId: null,
+      templateSnapshot: null,
+      notes: 'Paciente busca control de peso. Se establece plan de 1200 kcal.',
+      data: {
+        motivoConsulta: 'Control de peso',
+        pesoActual: 68,
+        estatura: 1.62,
+        observaciones: 'Sedentaria, sin alergias alimentarias',
+      },
+    },
+  ];
+
+  let historyCount = 0;
+  for (const history of historiesData) {
+    const existingHistory = await prisma.medicalHistory.findFirst({
+      where: { patientId: history.patientId, clinicId: clinic.id, title: history.title },
+    });
+    if (existingHistory) {
+      tally(false);
+    } else {
+      const { templateSnapshot, ...rest } = history;
+      await prisma.medicalHistory.create({
+        data: {
+          ...rest,
+          // Columna Json: null literal no es aceptado por Prisma, hay que usar DbNull.
+          templateSnapshot: templateSnapshot ?? Prisma.DbNull,
+          clinicId: clinic.id,
+          createdById: doctor.id,
+        },
+      });
+      tally(true);
+    }
+    historyCount++;
+  }
+
+  console.log(`✅ Medical histories: ${historyCount}`);
+
+  // Presupuestos de ejemplo. Quote.total lo calcula el cliente en produccion
+  // (el servidor no lo recalcula), aqui se suma para mantener consistencia con
+  // los items. dolarId referencia la tasa vigente al momento de emitir.
+  const quotesData = [
+    {
+      title: 'Presupuesto control de hipertensión - Ana García',
+      description: 'Consultas de control y estudios de laboratorio del primer trimestre.',
+      status: 'pending',
+      validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      patientId: ana.id,
+      items: [
+        { name: 'Consulta Médica', description: 'Consulta general con el médico', quantity: 2, unitPrice: 500 },
+        { name: 'Perfil Químico', description: 'Laboratorio ACH', quantity: 1, unitPrice: 850 },
+        { name: 'Panel Lipídico', description: 'Laboratorio ACH', quantity: 1, unitPrice: 620 },
+      ],
+    },
+    {
+      title: 'Presupuesto dolor lumbar - Carlos López',
+      description: 'Estudio de imagen y sesiones de fisioterapia.',
+      status: 'approved',
+      validUntil: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000),
+      patientId: carlos.id,
+      items: [
+        { name: 'Rayos X', description: 'Radiología ACH', quantity: 2, unitPrice: 450 },
+        { name: 'Terapia Física', description: 'Fisioterapia ACH', quantity: 6, unitPrice: 300 },
+      ],
+    },
+  ];
+
+  let quoteCount = 0;
+  for (const quote of quotesData) {
+    const existingQuote = await prisma.quote.findFirst({
+      where: { clinicId: clinic.id, title: quote.title },
+    });
+    if (existingQuote) {
+      tally(false);
+    } else {
+      const total = quote.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+      await prisma.quote.create({
+        data: {
+          title: quote.title,
+          description: quote.description,
+          status: quote.status,
+          validUntil: quote.validUntil,
+          total,
+          dolarId: dolar.id,
+          patientId: quote.patientId,
+          clinicId: clinic.id,
+          createdById: doctor.id,
+          items: {
+            create: quote.items.map(item => ({
+              ...item,
+              total: item.unitPrice * item.quantity,
+            })),
+          },
+        },
+      });
+      tally(true);
+    }
+    quoteCount++;
+  }
+
+  console.log(`✅ Quotes: ${quoteCount} (con sus QuoteItem)`);
+
+  console.log(`🎉 Seed completed! ${created} creados, ${skipped} ya existian`);
 }
 
 main()

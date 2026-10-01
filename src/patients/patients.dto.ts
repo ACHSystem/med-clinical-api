@@ -11,14 +11,6 @@ export class PatientListQueryDto extends PaginationQueryDto {
   @IsString()
   @IsOptional()
   gender?: string;
-
-  @IsDateString()
-  @IsOptional()
-  createdFrom?: string;
-
-  @IsDateString()
-  @IsOptional()
-  createdTo?: string;
 }
 
 export class CreatePatientDto {

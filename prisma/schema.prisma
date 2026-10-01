@@ -28,6 +28,7 @@ model User {
   memberships      ClinicUser[]
   createdHistories MedicalHistory[] @relation("HistoryAuthor")
   createdQuotes    Quote[]          @relation("QuoteAuthor")
+  appointments     Appointment[]
 }
 
 // Tenant: el consultorio. Todos los datos de negocio cuelgan de aqui, no del User.
@@ -42,14 +43,18 @@ model Clinic {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members          ClinicUser[]
-  patients         Patient[]
-  medicalHistories MedicalHistory[]
-  quotes           Quote[]
-  templates        FormTemplate[]
-  providers        Provider[]
-  serviceCosts     ServiceCost[]
-  paymentMethods   PaymentMethod[]
+  members             ClinicUser[]
+  patients            Patient[]
+  medicalHistories    MedicalHistory[]
+  quotes              Quote[]
+  templates           FormTemplate[]
+  providers           Provider[]
+  serviceCosts        ServiceCost[]
+  paymentMethods      PaymentMethod[]
+  TreatmentMedication TreatmentMedication[]
+  appointments        Appointment[]
+  medications         Medication[]
+  medicalTreatments   MedicalTreatments[]
 
   @@unique([slug])
   @@index([isActive])
@@ -77,7 +82,7 @@ model Patient {
   id        String    @id @default(uuid())
   name      String
   lastName  String
-  identify  String
+  identify  String    @unique
   email     String?
   phone     String?
   birthDate DateTime?
@@ -92,48 +97,10 @@ model Patient {
   clinic           Clinic           @relation(fields: [clinicId], references: [id])
   medicalHistories MedicalHistory[]
   quotes           Quote[]
+  appointments     Appointment[]
 
-  @@index([clinicId, isActive])
+  @@unique([clinicId, identify])
   @@index([clinicId, identify])
-}
-
-// Proveedores (datos de la clinica: laboratorios, transporte...)
-model Provider {
-  id           String   @id @default(uuid())
-  name         String
-  type         String
-  businessName String
-  identify     String
-  email        String?
-  phone        String?
-  address      String?
-  description  String?
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  clinicId String
-  clinic   Clinic @relation(fields: [clinicId], references: [id])
-
-  services ProviderService[]
-
-  @@index([clinicId, isActive])
-}
-
-// Servicios de proveedores
-model ProviderService {
-  id          String   @id @default(uuid())
-  name        String
-  description String?
-  price       Decimal  @db.Decimal(10, 2)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  providerId String
-  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
-
-  @@index([providerId, isActive])
 }
 
 // Plantilla de formulario reutilizable por condicion clinica.
@@ -186,30 +153,223 @@ model CustomField {
   @@index([templateId, isActive])
 }
 
+model Appointment {
+  id String @id @default(uuid())
+
+  // Cuándo
+  scheduledAt   DateTime // fecha + hora juntas (más simple para ordenar y filtrar)
+  durationMin   Int       @default(30)
+  confirmedAt   DateTime? // cuándo confirmó el paciente
+  attendedAt    DateTime? // cuándo se atendió realmente
+  cancelledAt   DateTime?
+  rescheduledAt DateTime?
+
+  // Qué
+  type    String // "CONSULTA_GENERAL" | "CONTROL" | "SEGUIMIENTO" | ...
+  status  String // "SCHEDULED" | "CONFIRMED" | "ATTENDED" | ...
+  reason  String? // motivo breve que dio el paciente
+  notes   String? // notas internas de la secretaria/médico
+  channel String // "IN_PERSON" | "TELEMEDICINE" (futuro)
+
+  // Quién
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id])
+  clinicId  String
+  clinic    Clinic  @relation(fields: [clinicId], references: [id])
+  userId    String
+  user      User    @relation(fields: [userId], references: [id])
+
+  // Vínculo con la historia (1:1 opcional desde la cita hacia la historia)
+  medicalHistoryId String?         @unique
+  medicalHistory   MedicalHistory? @relation(fields: [medicalHistoryId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clinicId, scheduledAt])
+  @@index([patientId, scheduledAt])
+  @@index([userId, scheduledAt])
+  @@index([clinicId, status, scheduledAt])
+}
+
 //Historias medicas
 model MedicalHistory {
-  id               String   @id @default(uuid())
-  title            String
-  data             Json
-  notes            String
-  type             String?
+  id    String @id @default(uuid())
+  title String
+  type  String
+
+  reason       String
+  symptoms     String
+  notes        String
+  observations String
+
+  diagnosis  String
+  evaluation String
+
+  date   DateTime
+  status String
+
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id])
+
+  vitalSigns Json?
+
+  //Datos de la plantilla y su plantilla
+  data       Json?
+  templateId String?
+  template   FormTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  //Tratamientos y medicamentos asociados a la historia
+  medicalTreatments MedicalTreatments[]
+
+  // Cita asociada a la historia (opcional, 1:1)
+  appointment Appointment?
+
+  deleted   Boolean   @default(false)
+  deletedAt DateTime?
+
   // Copia de la definicion de la plantilla en el momento del guardado
   templateSnapshot Json?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+  clinicId         String
+  clinic           Clinic   @relation(fields: [clinicId], references: [id])
+  createdById      String
+  createdBy        User     @relation("HistoryAuthor", fields: [createdById], references: [id])
 
-  patientId   String
-  patient     Patient       @relation(fields: [patientId], references: [id])
-  clinicId    String
-  clinic      Clinic        @relation(fields: [clinicId], references: [id])
-  createdById String
-  createdBy   User          @relation("HistoryAuthor", fields: [createdById], references: [id])
-  templateId  String?
-  template    FormTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
-
-  @@index([clinicId, createdAt])
-  @@index([patientId, createdAt])
+  @@index([clinicId, patientId, createdAt, type, status])
   @@index([createdById])
+}
+
+model MedicalTreatments {
+  id               String         @id @default(uuid())
+  medicalHistoryId String
+  medicalHistory   MedicalHistory @relation(fields: [medicalHistoryId], references: [id], onDelete: Cascade)
+  clinicId         String
+  clinic           Clinic         @relation(fields: [clinicId], references: [id])
+
+  // Plan general (no farmacológico)
+  title           String? // "Plan de manejo HTA"
+  plan            String? // indicaciones generales (dieta, reposo, etc.)
+  recommendations String?
+  notes           String?
+
+  // NUEVO
+  startDate DateTime?
+  endDate   DateTime?
+  isActive  Boolean   @default(true)
+
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  medication           Medication?           @relation(fields: [medicationId], references: [id])
+  medicationId         String?
+  treatmentMedications TreatmentMedication[]
+
+  @@index([clinicId])
+}
+
+// ── Catálogo de medicamentos (reutilizable por clínica) ───────
+model Medication {
+  id               String  @id @default(uuid())
+  name             String // "Losartán"
+  activeIngredient String? // "Losartán potásico"
+  presentation     String? // "Tableta"
+  concentration    String? // "50 mg"
+  form             String? // "VO", "IV", "IM", "Tópico"
+  notes            String?
+
+  clinicId String
+  clinic   Clinic @relation(fields: [clinicId], references: [id])
+
+  prescriptions TreatmentMedication[]
+
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  medicalTreatments MedicalTreatments[]
+
+  @@unique([clinicId, name, concentration])
+  @@index([clinicId])
+  @@index([clinicId, name])
+}
+
+// ── Indicación concreta de un medicamento en un tratamiento ───
+model TreatmentMedication {
+  id                 String            @id @default(uuid())
+  medicalTreatmentId String
+  medicalTreatment   MedicalTreatments @relation(fields: [medicalTreatmentId], references: [id], onDelete: Cascade)
+
+  // Vínculo opcional al catálogo
+  medicationId String?
+  medication   Medication? @relation(fields: [medicationId], references: [id], onDelete: SetNull)
+
+  // Snapshot: se congela al guardar por si el catálogo cambia
+  medicationName   String
+  activeIngredient String?
+  presentation     String?
+  concentration    String?
+
+  // Indicación
+  dose         String // "50 mg"
+  frequency    String // "cada 12 horas"
+  route        String? // "VO"
+  duration     String? // "30 días"
+  quantity     String? // "1 tableta"
+  instructions String? // indicación específica de ESTE fármaco
+  notes        String?
+
+  startDate DateTime?
+  endDate   DateTime?
+
+  sortOrder Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  clinic    Clinic?  @relation(fields: [clinicId], references: [id])
+  clinicId  String?
+
+  @@index([medicalTreatmentId, sortOrder])
+  @@index([medicationId])
+}
+
+// ------------------------------------------------------------------------------------------ //
+
+// Proveedores (datos de la clinica: laboratorios, transporte...)
+model Provider {
+  id           String   @id @default(uuid())
+  name         String
+  type         String // "LAB" | "IMAGING" | "PHARMACY" | "EXTERNAL_DOCTOR" | "SUPPLIES" | "OTHER"
+  businessName String
+  identify     String   @unique
+  email        String?
+  phone        String?
+  address      String?
+  description  String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  clinicId String
+  clinic   Clinic @relation(fields: [clinicId], references: [id])
+
+  services ProviderService[]
+
+  @@index([clinicId, isActive])
+}
+
+// Servicios de proveedores
+model ProviderService {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  price       Decimal  @db.Decimal(10, 2)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  providerId String
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([providerId, isActive])
 }
 
 //Costos y Servicios

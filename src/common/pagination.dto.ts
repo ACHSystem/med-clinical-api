@@ -11,7 +11,7 @@ export class PaginationQueryDto {
   @IsInt()
   @Min(1)
   @Max(100)
-  limit = 20;
+  limit = 50;
 
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()

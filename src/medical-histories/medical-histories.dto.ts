@@ -6,13 +6,17 @@ export class MedicalHistoryListQueryDto extends PaginationQueryDto {
   @IsOptional()
   type?: string;
 
-  @IsDateString()
+  @IsUUID()
   @IsOptional()
-  createdFrom?: string;
+  patientId?: string;
 
   @IsDateString()
   @IsOptional()
-  createdTo?: string;
+  dateStart?: string;
+
+  @IsDateString()
+  @IsOptional()
+  dateTo?: string;
 }
 
 export class CreateMedicalHistoryDto {
@@ -21,15 +25,19 @@ export class CreateMedicalHistoryDto {
   title?: string;
 
   @IsNotEmpty()
-  data: Record<string, any>;
+  data!: Record<string, any>;
 
   @IsString()
   @IsOptional()
   notes?: string;
 
+  @IsString()
+  @IsOptional()
+  templateId?: string;
+
   @IsUUID()
   @IsNotEmpty()
-  patientId: string;
+  patientId!: string;
 }
 
 export class UpdateMedicalHistoryDto {
@@ -43,4 +51,29 @@ export class UpdateMedicalHistoryDto {
   @IsString()
   @IsOptional()
   notes?: string;
+
+  @IsString()
+  @IsOptional()
+  templateId?: string;
 }
+
+
+export const MedicalHistoryStatus = {
+  DRAFT: 'DRAFT',
+  COMPLETED: 'COMPLETED',
+  AMENDED: 'AMENDED',
+  CANCELLED: 'CANCELLED',
+  ARCHIVED: 'ARCHIVED',
+} as const;
+
+export const MedicalHistoryType = {
+  GENERAL_CONSULT: 'Consulta general',
+  FOLLOW_UP: 'Seguimiento / control',
+  SPECIALIST_CONSULT: 'Consulta de especialista',
+  INTERCONSULT: 'Interconsulta con otro especialista',
+  EMERGENCY: 'Emergencia',
+  PROCEDURE: 'Procedimiento menor en consultorio',
+  TELEMEDICINE: 'Consulta remota',
+  POST_OP_FOLLOW_UP: 'Control postoperatorio',
+  LAB_REVIEW: 'Revisión de resultados'
+} as const
