@@ -88,17 +88,17 @@ export class MedicalHistoriesService {
       where: { patientId, clinicId, deleted: false },
       include: {
         patient: true,
+        template: true,
         medicalTreatments: {
           include: {
             treatmentMedications: {
               include: {
                 medication: true,
-              }
-            }
+              },
+            },
           },
-          template: true,
-        }
-      }
+        },
+      },
     });
     return histories;
   }

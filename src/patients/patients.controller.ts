@@ -13,6 +13,11 @@ export class PatientsController {
     return await this.patientsService.getPatients(user.clinicId, query);
   }
 
+  @Get(':id/medical-histories')
+  async getPatientMedicalHistories(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
+    return await this.patientsService.getPatientMedicalHistories(id, user.clinicId);
+  }
+
   @Get(':id')
   async getPatient(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
     return await this.patientsService.findOne(id, user.clinicId);

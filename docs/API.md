@@ -483,6 +483,7 @@ Base: `/api/patients`. Todo filtrado por clínica.
 | Método | Ruta | Body | Respuesta |
 | --- | --- | --- | --- |
 | `GET` | `/patients` | Query: `page`, `limit`, `search`, `gender`, `isActive`, `createdFrom`, `createdTo` | `200 { data: Patient[], meta }` |
+| `GET` | `/patients/:id/medical-histories` | — | `200 MedicalHistory[]` con paciente, plantilla, tratamientos e indicaciones · `404` si el paciente no es de tu clínica |
 | `GET` | `/patients/:id` | — | `200 Patient` · `404` |
 | `POST` | `/patients` | `CreatePatientRequest` (requiere Bearer token; `clinicId` se toma del consultorio activo) | `201 { status, message, data: Patient }` |
 | `PUT` | `/patients/:id` | `UpdatePatientRequest` | `200 { status, message, data: Patient }` |
@@ -521,14 +522,14 @@ Base: `/api/medical-histories`.
 
 | Método | Ruta | Body | Respuesta |
 | --- | --- | --- | --- |
-| `GET` | `/medical-histories/patient/:patientId` | Query: `page`, `limit`, `search`, `type`, `createdFrom`, `createdTo` | `200 { data: MedicalHistory[], meta }` · `404` si el paciente no es de tu clínica |
-| `GET` | `/medical-histories/:id` | — | `200 MedicalHistory` · `404` |
+| `GET` | `/medical-histories` | Query: `page`, `limit`, `patientId`, `type`, `dateStart`, `dateTo`, `search` | `200 { data: MedicalHistory[], meta }`; cada historia incluye un resumen del paciente |
+| `GET` | `/medical-histories/:id` | — | `200 MedicalHistory` con paciente, plantilla, tratamientos e indicaciones · `404` |
 | `POST` | `/medical-histories` | `CreateMedicalHistoryRequest` (requiere Bearer token; `clinicId` y `createdById` se asignan desde el usuario autenticado) | `201 { status, message, data: MedicalHistory }` |
 | `PUT` | `/medical-histories/:id` | `UpdateMedicalHistoryRequest` | `200 { status, message, data: MedicalHistory }` |
 | `DELETE` | `/medical-histories/:id` | — | `200 { status, message, data: MedicalHistory }` |
 
-**No existe `GET /medical-histories`** para listar todo: el listado es siempre por
-paciente.
+Todas las rutas de lectura filtran por la clínica activa del token. La ruta anidada en
+pacientes valida la pertenencia del paciente antes de devolver sus historias.
 
 ### 5.1 El formulario de intake
 
