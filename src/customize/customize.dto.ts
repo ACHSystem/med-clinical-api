@@ -1,13 +1,18 @@
 import { Transform, Type } from 'class-transformer';
-import { IsArray, IsBoolean, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsInt,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 import { PaginationQueryDto, parseBooleanQuery } from '../common/pagination.dto';
 
-class ActiveQueryDto extends PaginationQueryDto {
-  @Transform(parseBooleanQuery)
-  @IsBoolean()
-  @IsOptional()
-  isActive?: boolean;
-}
+class ActiveQueryDto extends PaginationQueryDto {}
 
 export class FormTemplateListQueryDto extends ActiveQueryDto {
   @IsString()
@@ -40,7 +45,7 @@ export class CustomFieldListQueryDto extends ActiveQueryDto {
   templateId?: string;
 }
 
-export class CreateFormTemplateDto {
+export class FormTemplateDto {
   @IsString()
   @IsNotEmpty()
   name!: string;
@@ -56,6 +61,12 @@ export class CreateFormTemplateDto {
   @IsString()
   @IsOptional()
   type?: string;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CustomFieldDto)
+  @IsOptional()
+  fields?: CustomFieldDto[];
 }
 
 export class UpdateFormTemplateDto {
@@ -80,7 +91,11 @@ export class UpdateFormTemplateDto {
   isActive?: boolean;
 }
 
-export class CreateCustomFieldDto {
+export class CustomFieldDto {
+  @IsString()
+  @IsOptional()
+  id?: string;
+
   @IsString()
   @IsOptional()
   templateId?: string;

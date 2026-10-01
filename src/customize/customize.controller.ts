@@ -1,8 +1,8 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Query, ParseArrayPipe } from '@nestjs/common';
 import { CustomizeService } from './customize.service';
 import {
-  CreateCustomFieldDto,
-  CreateFormTemplateDto,
+  CustomFieldDto,
+  FormTemplateDto,
   CustomFieldListQueryDto,
   FormTemplateListQueryDto,
   ReorderCustomFieldDto,
@@ -20,13 +20,8 @@ export class CustomizeController {
     return await this.customizeService.getFormTemplates(user.clinicId, query);
   }
 
-  @Get('templates/:id')
-  async findTemplate(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
-    return await this.customizeService.findTemplate(id, user.clinicId);
-  }
-
   @Post('templates')
-  async createTemplate(@Body() dto: CreateFormTemplateDto, @CurrentUser() user: CurrentUserData) {
+  async createTemplate(@Body() dto: FormTemplateDto, @CurrentUser() user: CurrentUserData) {
     return await this.customizeService.createTemplate(dto, user.clinicId);
   }
 
@@ -50,7 +45,7 @@ export class CustomizeController {
   }
 
   @Post('fields')
-  async createField(@Body() dto: CreateCustomFieldDto, @CurrentUser() user: CurrentUserData) {
+  async createField(@Body() dto: CustomFieldDto, @CurrentUser() user: CurrentUserData) {
     return await this.customizeService.create(dto, user.clinicId);
   }
 
@@ -88,7 +83,7 @@ export class CustomizeController {
   }
 
   @Post()
-  async create(@Body() dto: CreateCustomFieldDto, @CurrentUser() user: CurrentUserData) {
+  async create(@Body() dto: CustomFieldDto, @CurrentUser() user: CurrentUserData) {
     return await this.customizeService.create(dto, user.clinicId);
   }
 

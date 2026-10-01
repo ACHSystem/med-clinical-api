@@ -385,7 +385,12 @@ export interface CreateFormTemplateRequest {
   condition?: string;
   description?: string;
   type?: string;
+  fields?: CreateTemplateFieldRequest[];
 }
+
+export type CreateTemplateFieldRequest = Omit<CreateCustomFieldRequest, 'templateId'> & {
+  id?: string; // ID existente: se reutiliza y reasigna a esta plantilla
+};
 
 export interface UpdateFormTemplateRequest {
   name?: string;
@@ -678,7 +683,7 @@ El formulario se define en el módulo **Customize**:
 | --- | --- | --- | --- |
 | `GET` | `/customize` | Query: `page`, `limit`, `search`, `condition`, `type`, `isActive` | `200 { data: FormTemplate[], meta }`; cada plantilla incluye sus campos activos ordenados |
 | `GET` | `/customize/templates/:id` | — | `200 FormTemplate` con campos activos · `404 Plantilla no encontrada` |
-| `POST` | `/customize/templates` | `CreateFormTemplateRequest` | `201 { status, message, data: FormTemplate }` |
+| `POST` | `/customize/templates` | `CreateFormTemplateRequest` (opcionalmente incluye `fields[]`) | `201 { status, message, data: FormTemplate }` con los campos creados y ordenados |
 | `PUT` | `/customize/templates/:id` | `UpdateFormTemplateRequest` | `200 { status, message, data: FormTemplate }` |
 | `DELETE` | `/customize/templates/:id` | — | Soft delete: desactiva la plantilla |
 | `GET` | `/customize/fields` | Query: `page`, `limit`, `search`, `templateId`, `fieldType`, `step`, `isRequired`, `isActive` | `200 { data: CustomField[], meta }` de la clínica activa |
@@ -687,6 +692,13 @@ El formulario se define en el módulo **Customize**:
 | `PUT` | `/customize/fields/:id` | `UpdateCustomFieldRequest` | `200 { status, message, data: CustomField }` |
 | `DELETE` | `/customize/fields/:id` | — | Soft delete del campo |
 | `PUT` | `/customize/fields/reorder` | `ReorderCustomField[]` | `200 { status, message, data: CustomField[] }`; solo campos de la clínica y de una plantilla |
+
+Al crear una plantilla, cada elemento de `fields[]` puede incluir `id`. Si se envía,
+se reutiliza ese campo si pertenece a la clínica; si no, se busca por nombre sin
+distinguir mayúsculas/minúsculas y, si no hay coincidencia, se crea. Reutilizar reasigna
+el campo a la plantilla nueva (el modelo solo permite una plantilla por campo). La
+creación de la plantilla y la asignación de todos sus campos son atómicas: un error
+revierte la operación completa.
 
 Se conservan las rutas legadas de campos: `/customize/:id`, `POST /customize`,
 `PUT /customize/:id`, `DELETE /customize/:id` y `PUT /customize/reorder`.

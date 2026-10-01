@@ -1,9 +1,10 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { toPaginatedResult } from '../common/pagination';
 import {
-  CreateCustomFieldDto,
-  CreateFormTemplateDto,
+  CustomFieldDto,
+  FormTemplateDto,
   CustomFieldListQueryDto,
   FormTemplateListQueryDto,
   ReorderCustomFieldDto,
@@ -17,7 +18,7 @@ export class CustomizeService {
 
   async getFormTemplates(clinicId: string, query: FormTemplateListQueryDto) {
     const where = {
-      isActive: query.isActive ?? true,
+      isActive: true,
       clinicId,
       ...(query.search ? { name: { contains: query.search, mode: 'insensitive' as const } } : {}),
       ...(query.condition ? { condition: { contains: query.condition, mode: 'insensitive' as const } } : {}),
@@ -32,7 +33,6 @@ export class CustomizeService {
         orderBy: [{ name: 'asc' }],
         include: {
           fields: {
-            where: { isActive: true },
             orderBy: [{ step: 'asc' }, { sortOrder: 'asc' }],
           },
         },
@@ -47,7 +47,6 @@ export class CustomizeService {
       where: { id, clinicId, ...(isActive === undefined ? {} : { isActive }) },
       include: {
         fields: {
-          where: { isActive: true },
           orderBy: [{ step: 'asc' }, { sortOrder: 'asc' }],
         },
       },
@@ -58,9 +57,83 @@ export class CustomizeService {
     return template;
   }
 
-  async createTemplate(dto: CreateFormTemplateDto, clinicId: string) {
-    const template = await this.prisma.formTemplate.create({ data: { ...dto, clinicId } });
+  async createTemplate(dto: FormTemplateDto, clinicId: string) {
+    const { fields = [], ...templateData } = dto;
+    const template = await this.prisma.$transaction(async transaction => {
+      const createdTemplate = await transaction.formTemplate.create({
+        data: { ...templateData, clinicId },
+      });
+
+      await this.createORAssignCustomFieldToTemplate(
+        transaction,
+        createdTemplate.id,
+        clinicId,
+        fields,
+      );
+
+      return transaction.formTemplate.findFirstOrThrow({
+        where: { id: createdTemplate.id, clinicId },
+        include: {
+          fields: {
+            orderBy: [{ step: 'asc' }, { sortOrder: 'asc' }],
+          },
+        },
+      });
+    });
+
     return { status: true, message: 'Plantilla creada exitosamente', data: template };
+  }
+
+  private async createORAssignCustomFieldToTemplate(
+    transaction: Prisma.TransactionClient,
+    templateId: string,
+    clinicId: string,
+    fields: CustomFieldDto[],
+  ) {
+    const assignedFieldIds = new Set<string>();
+
+    for (const field of fields) {
+      const data = {
+        name: field.name,
+        fieldType: field.fieldType,
+        isRequired: field.isRequired,
+        options: field.options ?? [],
+        sortOrder: field.sortOrder,
+        step: field.step,
+        unit: field.unit,
+        helpText: field.helpText,
+        placeholder: field.placeholder,
+        minValue: field.minValue,
+        maxValue: field.maxValue,
+        isActive: true,
+        templateId,
+      };
+
+      const existingField = field.id
+        ? await transaction.customField.findFirst({
+            where: { id: field.id, template: { clinicId } },
+          })
+        : await transaction.customField.findFirst({
+            where: {
+              name: { equals: field.name, mode: 'insensitive' },
+              template: { clinicId },
+            },
+            orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          });
+
+      if (field.id && !existingField) {
+        throw new NotFoundException('Campo no encontrado');
+      }
+
+      const assignedField = existingField
+        ? await transaction.customField.update({ where: { id: existingField.id }, data })
+        : await transaction.customField.create({ data });
+
+      if (assignedFieldIds.has(assignedField.id)) {
+        throw new BadRequestException('No se puede asignar el mismo campo más de una vez');
+      }
+      assignedFieldIds.add(assignedField.id);
+    }
   }
 
   async updateTemplate(id: string, dto: UpdateFormTemplateDto, clinicId: string) {
@@ -77,7 +150,7 @@ export class CustomizeService {
 
   async getFields(clinicId: string, query: CustomFieldListQueryDto) {
     const where = {
-      isActive: query.isActive ?? true,
+      isActive: true,
       template: { clinicId },
       ...(query.templateId ? { templateId: query.templateId } : {}),
       ...(query.step !== undefined ? { step: query.step } : {}),
@@ -107,7 +180,7 @@ export class CustomizeService {
     return field;
   }
 
-  async create(dto: CreateCustomFieldDto, clinicId: string) {
+  async create(dto: CustomFieldDto, clinicId: string) {
     const template = dto.templateId
       ? await this.findTemplate(dto.templateId, clinicId, true)
       : await this.prisma.formTemplate.upsert({
