@@ -23,12 +23,13 @@ async function main() {
   console.log('🌱 Starting seed...');
 
   // Create users
-  const hashedPassword = await bcrypt.hash('password123', 10);
+  const hashedPassword = await bcrypt.hash('admin', 12);
 
   const doctor = await prisma.user.upsert({
     where: { email: 'doctor@medclinical.com' },
     update: {},
     create: {
+      username: 'admin',
       email: 'doctor@medclinical.com',
       password: hashedPassword,
       name: 'Juan',
@@ -42,6 +43,7 @@ async function main() {
     where: { email: 'assistant@medclinical.com' },
     update: {},
     create: {
+      username: 'assistant',
       email: 'assistant@medclinical.com',
       password: hashedPassword,
       name: 'María',

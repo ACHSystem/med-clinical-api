@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 export interface ITokenPayload {
     sub: string;
     email: string;
+    username: string;
     role: string;
     /** Consultorio activo: el tenant de la peticion. */
     clinicId: string;
@@ -85,6 +86,7 @@ export class AuthGuard implements CanActivate {
         request['user'] = {
             userId: payload.sub,
             email: payload.email,
+            username: payload.username,
             // El rol es el de la membresia, no el de la cuenta: el mismo usuario
             // puede ser DOCTOR en un consultorio y ASSISTANT en otro.
             role: membership.role,

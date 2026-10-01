@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 export interface AccessTokenPayload {
   sub: string;
   email: string;
+  username: string;
   role: string;
   clinicId: string;
 }
@@ -25,10 +26,11 @@ export class AuthService {
     this.secretKey = this.configService.getOrThrow<string>('JWT_SECRET');
   }
 
-  private signToken(user: { id: string; email: string; role: string }, clinicId: string) {
+  private signToken(user: { id: string; email: string; username: string; role: string }, clinicId: string) {
     const payload: AccessTokenPayload = {
       sub: user.id,
       email: user.email,
+      username: user.username,
       role: user.role,
       clinicId,
     };
@@ -44,12 +46,12 @@ export class AuthService {
   }
 
   async login(credentials: LoginDto) {
-    const { email, password } = credentials;
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const { username, password } = credentials;
+    const user = await this.prisma.user.findUnique({ where: { username } });
 
     // Mismo mensaje para usuario inexistente y contrasena incorrecta: no enumerar cuentas
     if (!user) {
-      throw new UnauthorizedException('Credenciales inválidas');
+      throw new UnauthorizedException('Usuario inválido');
     }
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
@@ -72,12 +74,13 @@ export class AuthService {
 
     return {
       success: true,
-      message: `Bienvenido ${user.name}`,
+      message: `Bienvenido ${user.name} ${user.lastName}`,
       data: {
         access_token: this.signToken(user, active.clinicId),
         user: {
           id: user.id,
           email: user.email,
+          username: user.username,
           name: user.name,
           role: user.role,
         },
@@ -96,15 +99,15 @@ export class AuthService {
   }
 
   async register(register: RegisterDto) {
-    const { email, password, name, lastName } = register;
-    const existingUser = await this.prisma.user.findUnique({ where: { email } });
+    const { email, password, name, lastName, username } = register;
+    const existingUser = await this.prisma.user.findUnique({ where: { username } });
     if (existingUser) {
-      throw new BadRequestException('El email ya está registrado');
+      throw new BadRequestException('El nombre de usuario ya está registrado');
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = await this.prisma.user.create({
-      data: { email, password: hashedPassword, name, lastName },
+      data: { email, username, password: hashedPassword, name, lastName },
     });
 
     // Si no se indica consultorio, se usa el del admin que esta registrando.
@@ -126,7 +129,9 @@ export class AuthService {
         user: {
           id: user.id,
           email: user.email,
+          username: user.username,
           name: user.name,
+          lastName: user.lastName,
           role: user.role,
         },
         clinic: {
@@ -185,8 +190,10 @@ export class AuthService {
     const membership = user.memberships[0];
     return {
       id: user.id,
-      email: user.email,
+      email: user.email,  
       name: user.name,
+      lastName: user.lastName,
+      username: user.username,
       role: user.role,
       clinic: membership
         ? { id: membership.clinicId, name: membership.clinic.name, role: membership.role }

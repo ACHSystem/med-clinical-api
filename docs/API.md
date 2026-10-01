@@ -108,7 +108,7 @@ devuelve `404`, nunca `403`, y nunca se puede escribir sobre un paciente ajeno.
 Los listados de `services-costs` y `payment-info` se filtran por el consultorio activo.
 Sus rutas de actualización y eliminación aún no filtran por clínica. El dólar es global.
 
-*** Update File: c:\Users\default.LAPTOP-OBBTCLMD\Desktop\Projects\Sistema de Historias medicas y Nutricion\med-clinical-api\docs\API.md
+ 
 
 ### 1.6 CORS
 
@@ -135,9 +135,6 @@ export interface AuthUser {
   email: string;
   name: string;
   role: Role;
-}
-
-export interface LoginRequest  { email: string; password: string; }
 export interface LoginResponse { access_token: string; user: AuthUser; }
 
 export interface RegisterRequest  { email: string; password: string; name: string; lastName: string; }
@@ -163,8 +160,6 @@ export interface Patient {
   createdAt: string;          // ISO 8601 UTC
   updatedAt: string;
 }
-
-*** Update File: c:\Users\default.LAPTOP-OBBTCLMD\Desktop\Projects\Sistema de Historias medicas y Nutricion\med-clinical-api\docs\API.md
 
 export interface CreatePatientRequest {
   name: string;        // obligatorio, no vacío
@@ -204,31 +199,114 @@ export interface MedicalHistory {
   date: string;                   // ISO 8601 UTC
   status: string;
   vitalSigns: Record<string, unknown> | null;
-  data: Record<string, unknown> | null;  // JSON libre: respuestas del formulario de intake
+  data: Record<string, unknown> | null;  // respuestas JSON del formulario
   templateId: string | null;
   templateSnapshot: Record<string, unknown> | null;
   patientId: string;
   clinicId: string;
   createdById: string;
+  deleted: boolean;
+  deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface CreateMedicalHistoryRequest {
-  patientId: string;                       // obligatorio, DEBE ser UUID
+export interface MedicalHistoryListItem {
+  id: string;
   title: string;
   type: string;
+  date: string;
+  createdAt: string;
+  patient: Pick<Patient, 'id' | 'name' | 'lastName' | 'identify'>;
+}
+
+export interface MedicalHistoryTemplate {
+  id: string;
+  name: string;
+  condition: string | null;
+  description: string | null;
+  type: string | null;
+  isActive: boolean;
+  clinicId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Medication {
+  id: string;
+  name: string;
+  activeIngredient: string | null;
+  presentation: string | null;
+  concentration: string | null;
+  form: string | null;
+  notes: string | null;
+  clinicId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TreatmentMedication {
+  id: string;
+  medicalTreatmentId: string;
+  medicationId: string | null;
+  medicationName: string;
+  activeIngredient: string | null;
+  presentation: string | null;
+  concentration: string | null;
+  dose: string;
+  frequency: string;
+  route: string | null;
+  duration: string | null;
+  quantity: string | null;
+  instructions: string | null;
+  notes: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  sortOrder: number;
+  clinicId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  medication: Medication | null;
+}
+
+export interface MedicalTreatment {
+  id: string;
+  medicalHistoryId: string;
+  clinicId: string;
+  title: string | null;
+  plan: string | null;
+  recommendations: string | null;
+  notes: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  isActive: boolean;
+  medicationId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  treatmentMedications: TreatmentMedication[];
+}
+
+export interface MedicalHistoryWithRelations extends MedicalHistory {
+  patient: Patient;
+  template: MedicalHistoryTemplate | null;
+  medicalTreatments: MedicalTreatment[];
+}
+
+export interface CreateMedicalHistoryRequest {
+  patientId: string;                       // obligatorio, UUID
+  title: string;                           // obligatorio, no vacío
+  type: string;                            // obligatorio, no vacío
   reason: string;
   symptoms: string;
   notes: string;
   observations: string;
   diagnosis: string;
   evaluation: string;
-  date: string;                            // ISO 8601
-  status: string;
-  vitalSigns?: Record<string, unknown>;
-  data?: Record<string, unknown>;          // respuestas del formulario de intake
-  templateId?: string;                     // UUID de plantilla
+  date: string;                            // obligatorio, ISO 8601
+  status: string;                          // obligatorio, no vacío
+  vitalSigns?: Record<string, unknown>;    // objeto JSON opcional
+  data?: Record<string, unknown>;          // objeto JSON opcional; respuestas del intake
+  templateId?: string;                     // UUID opcional de plantilla
   templateSnapshot?: Record<string, unknown>;
 }
 
@@ -236,6 +314,7 @@ export interface UpdateMedicalHistoryRequest {
   title?: string;
   data?: Record<string, unknown>;
   notes?: string;
+  templateId?: string;
 }
 
 // ---------- Campos personalizados (formulario dinámico) ----------
@@ -352,7 +431,7 @@ export interface PaymentMethod {
   updatedAt: string;
 }
 
-*** Update File: c:\Users\default.LAPTOP-OBBTCLMD\Desktop\Projects\Sistema de Historias medicas y Nutricion\med-clinical-api\docs\API.md
+ 
 
 export interface CreatePaymentMethodRequest {
   bank: string;
@@ -362,7 +441,6 @@ export interface CreatePaymentMethodRequest {
   account?: string;      // opcional en la validación, obligatorio en la BD
 }
 
-// ---------- Dólar ----------
 export interface Dolar {
   id: string;
   value: string;         // DECIMAL como string
@@ -522,20 +600,33 @@ Base: `/api/medical-histories`.
 
 | Método | Ruta | Body | Respuesta |
 | --- | --- | --- | --- |
-| `GET` | `/medical-histories` | Query: `page`, `limit`, `patientId`, `type`, `dateStart`, `dateTo`, `search` | `200 { data: MedicalHistory[], meta }`; cada historia incluye un resumen del paciente |
-| `GET` | `/medical-histories/:id` | — | `200 MedicalHistory` con paciente, plantilla, tratamientos e indicaciones · `404` |
-| `POST` | `/medical-histories` | `CreateMedicalHistoryRequest` (requiere Bearer token; `clinicId` y `createdById` se asignan desde el usuario autenticado) | `201 { status, message, data: MedicalHistory }` |
-| `PUT` | `/medical-histories/:id` | `UpdateMedicalHistoryRequest` | `200 { status, message, data: MedicalHistory }` |
-| `DELETE` | `/medical-histories/:id` | — | `200 { status, message, data: MedicalHistory }` |
+| `GET` | `/medical-histories` | Query: `page`, `limit`, `patientId`, `type`, `dateStart`, `dateTo`, `search` | `200 { data: MedicalHistoryListItem[], meta }`; incluye resumen del paciente |
+| `GET` | `/medical-histories/:id` | — | `200 MedicalHistory` sin relaciones · `404` |
+| `POST` | `/medical-histories` | `CreateMedicalHistoryRequest` (requiere Bearer token; `clinicId` y `createdById` se asignan desde el usuario autenticado) | `201 { status, message, data: MedicalHistory }` sin relaciones |
+| `PUT` | `/medical-histories/:id` | `UpdateMedicalHistoryRequest` | `200 { status, message, data: MedicalHistory }` sin relaciones |
+| `DELETE` | `/medical-histories/:id` | — | `200 { status, message, data: MedicalHistory }` con `deleted: true` y `deletedAt` |
 
 Todas las rutas de lectura filtran por la clínica activa del token. La ruta anidada en
-pacientes valida la pertenencia del paciente antes de devolver sus historias.
+pacientes valida la pertenencia del paciente y devuelve `MedicalHistoryWithRelations[]`:
+incluye el paciente completo, la plantilla, los tratamientos, las indicaciones y el
+medicamento asociado a cada indicación. El listado general devuelve solo
+`MedicalHistoryListItem`; el detalle por ID y las respuestas de escritura no incluyen
+relaciones.
+
+Los listados excluyen historias borradas (`deleted: false`). La consulta por ID no
+excluye historias borradas, por lo que puede devolver una historia con `deleted: true`.
+
+En creación, `title`, `type`, `status` y `patientId` deben ser no vacíos; `patientId` debe
+ser UUID. `date` debe ser ISO 8601. Los campos narrativos restantes son strings
+obligatorios (se admite cadena vacía). `vitalSigns`, `data` y `templateSnapshot` son
+objetos JSON opcionales; se valida que sean objetos, no la estructura interna de sus
+propiedades. En actualización, `title`, `data`, `notes` y `templateId` son opcionales.
 
 ### 5.1 El formulario de intake
 
 `MedicalHistory.data` es un **campo JSON libre**: ahí se guardan las respuestas del
-formulario. La API **no valida** su contenido (cualquier objeto se acepta, incluso
-`{"x":1}`), así que el frontend es responsable de la forma.
+formulario. En creación se valida que sea un objeto, pero no se valida su contenido
+(`{"x":1}` es válido); el frontend es responsable de la forma interna.
 
 El formulario se define en el módulo **Customize**:
 
