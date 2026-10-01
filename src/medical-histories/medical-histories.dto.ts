@@ -1,4 +1,4 @@
-import { IsDateString, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsDateString, IsNotEmpty, IsObject, IsOptional, IsString, IsUUID } from 'class-validator';
 import { PaginationQueryDto } from '../common/pagination.dto';
 
 export class MedicalHistoryListQueryDto extends PaginationQueryDto {
@@ -21,19 +21,53 @@ export class MedicalHistoryListQueryDto extends PaginationQueryDto {
 
 export class CreateMedicalHistoryDto {
   @IsString()
-  @IsOptional()
-  title?: string;
-
   @IsNotEmpty()
-  data!: Record<string, any>;
+  title!: string;
 
   @IsString()
+  @IsNotEmpty()
+  type!: string;
+
+  @IsString()
+  reason!: string;
+
+  @IsString()
+  symptoms!: string;
+
+  @IsString()
+  notes!: string;
+
+  @IsString()
+  observations!: string;
+
+  @IsString()
+  diagnosis!: string;
+
+  @IsString()
+  evaluation!: string;
+
+  @IsDateString()
+  date!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  status!: string;
+
+  @IsObject()
   @IsOptional()
-  notes?: string;
+  vitalSigns?: Record<string, any>;
 
-  @IsString()
+  @IsObject()
+  @IsOptional()
+  data?: Record<string, any>;
+
+  @IsUUID()
   @IsOptional()
   templateId?: string;
+
+  @IsObject()
+  @IsOptional()
+  templateSnapshot?: Record<string, any>;
 
   @IsUUID()
   @IsNotEmpty()

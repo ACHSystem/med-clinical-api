@@ -102,11 +102,21 @@ export class MedicalHistoriesService {
     await this.assertOwnsPatient(dto.patientId, clinicId);
     const history = await this.prisma.medicalHistory.create({
       data: {
-        title: dto.title || '',
+        title: dto.title,
+        type: dto.type,
+        reason: dto.reason,
+        symptoms: dto.symptoms,
+        observations: dto.observations,
+        diagnosis: dto.diagnosis,
+        evaluation: dto.evaluation,
+        date: new Date(dto.date),
+        status: dto.status,
+        vitalSigns: dto.vitalSigns,
         data: dto.data,
-        notes: dto.notes || '',
+        notes: dto.notes,
         patientId: dto.patientId,
         templateId: dto.templateId || null,
+        templateSnapshot: dto.templateSnapshot,
         clinicId,
         createdById: userId,
       },

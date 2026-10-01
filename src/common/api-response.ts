@@ -1,10 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
+import { Injectable } from '@nestjs/common';
 
 @Injectable()
 export class ApiResponse<T> {
-  constructor(private prisma: PrismaService) {}
-
   static success<T>(message: string, data?: T): { status: boolean; message: string; data?: T } {
     return {
       status: true,

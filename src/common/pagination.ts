@@ -3,7 +3,7 @@ export interface PaginatedResult<T> {
     pagination: {
         page: number;
         limit: number;
-        total: number;
+        totalElements: number;
         totalPages: number;
     };
 }
@@ -19,7 +19,7 @@ export function toPaginatedResult<T>(
         pagination: {
             page,
             limit,
-            total,
+            totalElements: total,
             totalPages: Math.ceil(total / limit),
         },
     };

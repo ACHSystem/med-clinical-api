@@ -194,8 +194,19 @@ export interface UpdatePatientRequest {
 export interface MedicalHistory {
   id: string;
   title: string;
-  data: Record<string, unknown>;  // JSON libre: respuestas del formulario de intake
+  type: string;
+  reason: string;
+  symptoms: string;
   notes: string;
+  observations: string;
+  diagnosis: string;
+  evaluation: string;
+  date: string;                   // ISO 8601 UTC
+  status: string;
+  vitalSigns: Record<string, unknown> | null;
+  data: Record<string, unknown> | null;  // JSON libre: respuestas del formulario de intake
+  templateId: string | null;
+  templateSnapshot: Record<string, unknown> | null;
   patientId: string;
   clinicId: string;
   createdById: string;
@@ -204,10 +215,21 @@ export interface MedicalHistory {
 }
 
 export interface CreateMedicalHistoryRequest {
-  patientId: string;              // obligatorio, DEBE ser UUID
-  data: Record<string, unknown>;  // obligatorio, no vacío
-  title?: string;                 // si se omite se guarda ""
-  notes?: string;                 // si se omite se guarda ""
+  patientId: string;                       // obligatorio, DEBE ser UUID
+  title: string;
+  type: string;
+  reason: string;
+  symptoms: string;
+  notes: string;
+  observations: string;
+  diagnosis: string;
+  evaluation: string;
+  date: string;                            // ISO 8601
+  status: string;
+  vitalSigns?: Record<string, unknown>;
+  data?: Record<string, unknown>;          // respuestas del formulario de intake
+  templateId?: string;                     // UUID de plantilla
+  templateSnapshot?: Record<string, unknown>;
 }
 
 export interface UpdateMedicalHistoryRequest {
