@@ -1,7 +1,7 @@
 import { PrismaClient, Prisma } from '../src/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcrypt';
-import 'dotenv/config';
+// import 'dotenv/config';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -333,6 +333,26 @@ async function main() {
   const carlos = patients.find(p => p.identify === 'CAR002')!;
   const maria = patients.find(p => p.identify === 'MAR003')!;
 
+  const medicationsData = [
+    { name: 'Losartán', activeIngredient: 'Losartán potásico', presentation: 'Tableta', concentration: '50 mg', form: 'VO' },
+    { name: 'Ibuprofeno', activeIngredient: 'Ibuprofeno', presentation: 'Tableta', concentration: '400 mg', form: 'VO' },
+  ];
+  const medications = new Map<string, Awaited<ReturnType<typeof prisma.medication.create>>>();
+  for (const medicationData of medicationsData) {
+    const existingMedication = await prisma.medication.findFirst({
+      where: {
+        clinicId: clinic.id,
+        name: medicationData.name,
+        concentration: medicationData.concentration,
+      },
+    });
+    const medication = existingMedication ?? await prisma.medication.create({
+      data: { ...medicationData, clinicId: clinic.id },
+    });
+    medications.set(medication.name, medication);
+    tally(!existingMedication);
+  }
+
   const historiesData = [
     {
       title: 'Control de hipertensión - primer control',
@@ -355,6 +375,16 @@ async function main() {
         'Cumple con el tratamiento': 'Parcialmente',
         'Síntomas': ['Dolor de cabeza'],
       },
+      treatments: [
+        {
+          title: 'Control farmacológico de hipertensión',
+          plan: 'Mantener tratamiento antihipertensivo y control domiciliario.',
+          recommendations: 'Reducir el consumo de sal y registrar la presión arterial.',
+          medications: [
+            { name: 'Losartán', dose: '50 mg', frequency: 'cada 24 horas', route: 'VO', duration: '30 días', quantity: '1 tableta', instructions: 'Tomar por la mañana' },
+          ],
+        },
+      ],
     },
     {
       title: 'Control de hipertensión - seguimiento mensual',
@@ -377,6 +407,16 @@ async function main() {
         'Cumple con el tratamiento': 'Sí',
         'Síntomas': ['Ninguno'],
       },
+      treatments: [
+        {
+          title: 'Continuidad del tratamiento antihipertensivo',
+          plan: 'Continuar esquema indicado y acudir a control mensual.',
+          recommendations: 'Mantener registro diario de presión arterial.',
+          medications: [
+            { name: 'Losartán', dose: '50 mg', frequency: 'cada 24 horas', route: 'VO', duration: '30 días', quantity: '1 tableta', instructions: 'Continuar por la mañana' },
+          ],
+        },
+      ],
     },
     {
       title: 'Primera consulta - dolor lumbar',
@@ -397,6 +437,16 @@ async function main() {
         antecedentes: 'Ninguno relevante',
         medicacionActual: 'Ibuprofeno 400 mg cada 12 h',
       },
+      treatments: [
+        {
+          title: 'Manejo inicial de lumbalgia',
+          plan: 'Reposo relativo y evaluación con estudio de imagen.',
+          recommendations: 'Evitar cargar peso hasta la reevaluación.',
+          medications: [
+            { name: 'Ibuprofeno', dose: '400 mg', frequency: 'cada 12 horas', route: 'VO', duration: '5 días', quantity: '1 tableta', instructions: 'Tomar con alimentos' },
+          ],
+        },
+      ],
     },
     {
       title: 'Evaluación nutricional inicial',
@@ -418,6 +468,14 @@ async function main() {
         estatura: 1.62,
         observaciones: 'Sedentaria, sin alergias alimentarias',
       },
+      treatments: [
+        {
+          title: 'Plan nutricional inicial',
+          plan: 'Plan de alimentación de 1200 kcal al día.',
+          recommendations: 'Aumentar gradualmente la actividad física y registrar las comidas.',
+          medications: [],
+        },
+      ],
     },
   ];
 
@@ -426,17 +484,61 @@ async function main() {
     const existingHistory = await prisma.medicalHistory.findFirst({
       where: { patientId: history.patientId, clinicId: clinic.id, title: history.title },
     });
+    let historyRecord = existingHistory;
     if (existingHistory) {
       tally(false);
     } else {
-      const { templateSnapshot, ...rest } = history;
-      await prisma.medicalHistory.create({
+      const { templateSnapshot, treatments, ...rest } = history;
+      historyRecord = await prisma.medicalHistory.create({
         data: {
           ...rest,
           // Columna Json: null literal no es aceptado por Prisma, hay que usar DbNull.
           templateSnapshot: templateSnapshot ?? Prisma.DbNull,
           clinicId: clinic.id,
           createdById: doctor.id,
+        },
+      });
+      tally(true);
+    }
+    if (!historyRecord) {
+      throw new Error(`No se pudo crear la historia médica "${history.title}".`);
+    }
+
+    for (const treatment of history.treatments) {
+      const existingTreatment = await prisma.medicalTreatments.findFirst({
+        where: { medicalHistoryId: historyRecord.id, clinicId: clinic.id, title: treatment.title },
+      });
+      if (existingTreatment) {
+        tally(false);
+        continue;
+      }
+
+      await prisma.medicalTreatments.create({
+        data: {
+          title: treatment.title,
+          plan: treatment.plan,
+          recommendations: treatment.recommendations,
+          medicalHistory: { connect: { id: historyRecord.id } },
+          clinic: { connect: { id: clinic.id } },
+          treatmentMedications: {
+            create: treatment.medications.map(indication => {
+              const medication = medications.get(indication.name)!;
+              return {
+                medication: { connect: { id: medication.id } },
+                medicationName: medication.name,
+                activeIngredient: medication.activeIngredient,
+                presentation: medication.presentation,
+                concentration: medication.concentration,
+                dose: indication.dose,
+                frequency: indication.frequency,
+                route: indication.route,
+                duration: indication.duration,
+                quantity: indication.quantity,
+                instructions: indication.instructions,
+                clinic: { connect: { id: clinic.id } },
+              };
+            }),
+          },
         },
       });
       tally(true);
