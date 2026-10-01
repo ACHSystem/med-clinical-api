@@ -6,7 +6,7 @@ import axios from 'axios';
 
 @Injectable()
 export class ServicesCostsService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) { }
 
   async getServicesAndCosts(clinicId: string, query: ServiceCostListQueryDto) {
     const where = {

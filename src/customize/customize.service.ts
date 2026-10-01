@@ -5,7 +5,7 @@ import { CreateCustomFieldDto, CustomFieldListQueryDto, UpdateCustomFieldDto } f
 
 @Injectable()
 export class CustomizeService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async findAll(clinicId: string, query: CustomFieldListQueryDto) {
     const where = {

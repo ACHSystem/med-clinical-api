@@ -5,7 +5,7 @@ import { ProviderDto, ProviderListQueryDto, ProviderServiceDto } from './provide
 
 @Injectable()
 export class ProvidersService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) { }
 
   async getProviders(clinicId: string, query: ProviderListQueryDto) {
     const where = {

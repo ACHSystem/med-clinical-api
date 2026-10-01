@@ -5,7 +5,7 @@ import { PaymentMethodDto, PaymentMethodListQueryDto } from './payment-info.dto'
 
 @Injectable()
 export class PaymentService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) { }
 
   async findAll(clinicId: string, query: PaymentMethodListQueryDto) {
     const where = {

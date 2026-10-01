@@ -3,9 +3,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { toPaginatedResult } from '../common/pagination';
 import { CreateMedicalHistoryDto, MedicalHistoryListQueryDto, UpdateMedicalHistoryDto } from './medical-histories.dto';
 
+interface GetHistoryByPatientIdParams {
+  patientId: string;
+  clinicId: string;
+}
+
 @Injectable()
 export class MedicalHistoriesService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) { }
 
   async getAllHistories(clinicId: string, query: MedicalHistoryListQueryDto) {
     const where = {
@@ -77,7 +82,7 @@ export class MedicalHistoriesService {
     return history;
   }
 
-  async getHistoryByPatientId(patientId: string, clinicId: string) {
+  async getHistoryByPatientId({ patientId, clinicId }: GetHistoryByPatientIdParams) {
     await this.assertOwnsPatient(patientId, clinicId);
     const histories = await this.prisma.medicalHistory.findMany({
       where: { patientId, clinicId, deleted: false },

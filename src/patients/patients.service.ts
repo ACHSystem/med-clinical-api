@@ -2,10 +2,14 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { toPaginatedResult } from '../common/pagination';
 import { CreatePatientDto, PatientListQueryDto, UpdatePatientDto } from './patients.dto';
+import { MedicalHistoriesService } from 'src/medical-histories/medical-histories.service';
 
 @Injectable()
 export class PatientsService {
-  constructor(private prisma: PrismaService) { }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly medicalHistoryService: MedicalHistoriesService,
+  ) { }
 
   async getPatients(clinicId: string, query: PatientListQueryDto) {
     const where = {
@@ -35,6 +39,11 @@ export class PatientsService {
       this.prisma.patient.count({ where }),
     ]);
     return toPaginatedResult(patients, total, query.page, query.limit);
+  }
+
+  async getPatientMedicalHistories(patientId: string, clinicId: string) {
+    await this.findOne(patientId, clinicId);
+    return this.medicalHistoryService.getHistoryByPatientId({ patientId, clinicId });
   }
 
   async findOne(id: string, clinicId: string) {

@@ -5,7 +5,7 @@ import { CreateQuoteDto, QuoteListQueryDto, UpdateQuoteDto } from './quotes.dto'
 
 @Injectable()
 export class QuotesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async getQuotes(clinicId: string, query: QuoteListQueryDto) {
     const where = {
