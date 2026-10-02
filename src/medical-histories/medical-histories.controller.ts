@@ -5,7 +5,7 @@ import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.
 
 @Controller('medical-histories')
 export class MedicalHistoriesController {
-  constructor(private medicalHistoriesService: MedicalHistoriesService) {}
+  constructor(private medicalHistoriesService: MedicalHistoriesService) { }
 
   @Get()
   async getAllHistories(
@@ -18,6 +18,11 @@ export class MedicalHistoriesController {
   @Get(':id')
   async findOne(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
     return await this.medicalHistoriesService.findOne(id, user.clinicId);
+  }
+
+  @Get('/patients/:id')
+  async getHistoryByPatient(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
+    return await this.medicalHistoriesService.getHistoryByPatientId({ patientId: id, clinicId: user.clinicId });
   }
 
   @Post()

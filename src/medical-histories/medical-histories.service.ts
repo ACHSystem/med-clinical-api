@@ -46,6 +46,8 @@ export class MedicalHistoriesService {
           id: true,
           title: true,
           type: true,
+          reason: true,
+          diagnosis: true,
           date: true,
           createdAt: true,
           patient: {
@@ -75,6 +77,19 @@ export class MedicalHistoriesService {
   async findOne(id: string, clinicId: string) {
     const history = await this.prisma.medicalHistory.findFirst({
       where: { id, clinicId },
+      include: {
+        patient: true,
+        template: true,
+        medicalTreatments: {
+          include: {
+            treatmentMedications: {
+              include: {
+                medication: true,
+              },
+            },
+          },
+        },
+      },
     });
     if (!history) {
       throw new NotFoundException('Historia no encontrada');
