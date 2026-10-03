@@ -1,4 +1,5 @@
-import { IsDateString, IsNotEmpty, IsObject, IsOptional, IsString, IsUUID } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsArray, IsBoolean, IsDateString, IsInt, IsNotEmpty, IsObject, IsOptional, IsString, IsUUID, Min, ValidateNested } from 'class-validator';
 import { PaginationQueryDto } from '../common/pagination.dto';
 
 export class MedicalHistoryListQueryDto extends PaginationQueryDto {
@@ -17,6 +18,154 @@ export class MedicalHistoryListQueryDto extends PaginationQueryDto {
   @IsDateString()
   @IsOptional()
   dateTo?: string;
+}
+
+export class CreateTreatmentMedicationDto {
+  @IsUUID()
+  @IsOptional()
+  medicationId?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  medicationName!: string;
+
+  @IsString()
+  @IsOptional()
+  activeIngredient?: string;
+
+  @IsString()
+  @IsOptional()
+  presentation?: string;
+
+  @IsString()
+  @IsOptional()
+  concentration?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  dose!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  frequency!: string;
+
+  @IsString()
+  @IsOptional()
+  route?: string;
+
+  @IsString()
+  @IsOptional()
+  duration?: string;
+
+  @IsString()
+  @IsOptional()
+  quantity?: string;
+
+  @IsString()
+  @IsOptional()
+  instructions?: string;
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
+
+  @IsDateString()
+  @IsOptional()
+  startDate?: string;
+
+  @IsDateString()
+  @IsOptional()
+  endDate?: string;
+
+  @IsInt()
+  @IsOptional()
+  sortOrder?: number;
+}
+
+export class CreateMedicalTreatmentDto {
+  @IsString()
+  @IsOptional()
+  title?: string;
+
+  @IsString()
+  @IsOptional()
+  plan?: string;
+
+  @IsString()
+  @IsOptional()
+  recommendations?: string;
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
+
+  @IsDateString()
+  @IsOptional()
+  startDate?: string;
+
+  @IsDateString()
+  @IsOptional()
+  endDate?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
+
+  @IsUUID()
+  @IsOptional()
+  medicationId?: string;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateTreatmentMedicationDto)
+  @IsOptional()
+  treatmentMedications?: CreateTreatmentMedicationDto[];
+}
+
+export class CreateHistoryAppointmentDto {
+  @IsDateString()
+  scheduledAt!: string;
+
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  durationMin?: number;
+
+  @IsDateString()
+  @IsOptional()
+  confirmedAt?: string;
+
+  @IsDateString()
+  @IsOptional()
+  attendedAt?: string;
+
+  @IsDateString()
+  @IsOptional()
+  cancelledAt?: string;
+
+  @IsDateString()
+  @IsOptional()
+  rescheduledAt?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  type!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  status!: string;
+
+  @IsString()
+  @IsOptional()
+  reason?: string;
+
+  @IsString()
+  @IsOptional()
+  notes?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  channel!: string;
 }
 
 export class CreateMedicalHistoryDto {
@@ -68,6 +217,17 @@ export class CreateMedicalHistoryDto {
   @IsObject()
   @IsOptional()
   templateSnapshot?: Record<string, any>;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateMedicalTreatmentDto)
+  @IsOptional()
+  medicalTreatments?: CreateMedicalTreatmentDto[];
+
+  @ValidateNested()
+  @Type(() => CreateHistoryAppointmentDto)
+  @IsOptional()
+  appointment?: CreateHistoryAppointmentDto;
 
   @IsUUID()
   @IsNotEmpty()

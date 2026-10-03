@@ -11,15 +11,7 @@ export class ServicesCostsService {
   async getServicesAndCosts(clinicId: string, query: ServiceCostListQueryDto) {
     const where = {
       clinicId,
-      isActive: query.isActive ?? true,
-      ...(query.minPrice !== undefined || query.maxPrice !== undefined
-        ? {
-            price: {
-              ...(query.minPrice !== undefined ? { gte: query.minPrice } : {}),
-              ...(query.maxPrice !== undefined ? { lte: query.maxPrice } : {}),
-            },
-          }
-        : {}),
+      isActive: true,
       ...(query.search
         ? {
             OR: [

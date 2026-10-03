@@ -3,20 +3,7 @@ import { IsBoolean, IsDate, IsNotEmpty, IsNumber, IsOptional, IsString } from 'c
 import { PaginationQueryDto, parseBooleanQuery } from '../common/pagination.dto';
 
 export class ServiceCostListQueryDto extends PaginationQueryDto {
-  @Transform(parseBooleanQuery)
-  @IsBoolean()
-  @IsOptional()
-  isActive?: boolean;
 
-  @Transform(({ value }) => (value === '' ? undefined : Number(value)))
-  @IsNumber()
-  @IsOptional()
-  minPrice?: number;
-
-  @Transform(({ value }) => (value === '' ? undefined : Number(value)))
-  @IsNumber()
-  @IsOptional()
-  maxPrice?: number;
 }
 
 export class ServiceCostDto {

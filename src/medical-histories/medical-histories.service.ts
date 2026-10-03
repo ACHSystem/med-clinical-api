@@ -120,6 +120,33 @@ export class MedicalHistoriesService {
 
   async createMedicalHistory(dto: CreateMedicalHistoryDto, clinicId: string, userId: string) {
     await this.assertOwnsPatient(dto.patientId, clinicId);
+
+    if (dto.templateId) {
+      const template = await this.prisma.formTemplate.findFirst({
+        where: { id: dto.templateId, clinicId },
+        select: { id: true },
+      });
+      if (!template) {
+        throw new NotFoundException('Plantilla no encontrada');
+      }
+    }
+
+    const medicationIds = [
+      ...(dto.medicalTreatments?.flatMap((treatment) => [
+        ...(treatment.medicationId ? [treatment.medicationId] : []),
+        ...(treatment.treatmentMedications?.flatMap((medication) => medication.medicationId ? [medication.medicationId] : []) ?? []),
+      ]) ?? []),
+    ];
+    if (medicationIds.length > 0) {
+      const medications = await this.prisma.medication.findMany({
+        where: { id: { in: [...new Set(medicationIds)] }, clinicId },
+        select: { id: true },
+      });
+      if (medications.length !== new Set(medicationIds).size) {
+        throw new NotFoundException('Medicamento no encontrado');
+      }
+    }
+
     const history = await this.prisma.medicalHistory.create({
       data: {
         title: dto.title,
@@ -137,6 +164,41 @@ export class MedicalHistoriesService {
         patientId: dto.patientId,
         templateId: dto.templateId || null,
         templateSnapshot: dto.templateSnapshot,
+        medicalTreatments: dto.medicalTreatments
+          ? {
+            create: dto.medicalTreatments.map(({ treatmentMedications, startDate, endDate, ...treatment }) => ({
+              ...treatment,
+              startDate: startDate ? new Date(startDate) : undefined,
+              endDate: endDate ? new Date(endDate) : undefined,
+              clinicId,
+              treatmentMedications: treatmentMedications
+                ? {
+                  create: treatmentMedications.map(({ startDate, endDate, ...medication }) => ({
+                    ...medication,
+                    startDate: startDate ? new Date(startDate) : undefined,
+                    endDate: endDate ? new Date(endDate) : undefined,
+                    clinicId,
+                  })),
+                }
+                : undefined,
+            })),
+          }
+          : undefined,
+        appointment: dto.appointment
+          ? {
+            create: {
+              ...dto.appointment,
+              scheduledAt: new Date(dto.appointment.scheduledAt),
+              confirmedAt: dto.appointment.confirmedAt ? new Date(dto.appointment.confirmedAt) : undefined,
+              attendedAt: dto.appointment.attendedAt ? new Date(dto.appointment.attendedAt) : undefined,
+              cancelledAt: dto.appointment.cancelledAt ? new Date(dto.appointment.cancelledAt) : undefined,
+              rescheduledAt: dto.appointment.rescheduledAt ? new Date(dto.appointment.rescheduledAt) : undefined,
+              patientId: dto.patientId,
+              clinicId,
+              userId,
+            },
+          }
+          : undefined,
         clinicId,
         createdById: userId,
       },

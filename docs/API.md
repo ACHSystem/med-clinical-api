@@ -292,6 +292,50 @@ export interface MedicalHistoryWithRelations extends MedicalHistory {
   medicalTreatments: MedicalTreatment[];
 }
 
+export interface CreateTreatmentMedicationRequest {
+  medicationId?: string;                  // UUID opcional del catálogo de la clínica
+  medicationName: string;
+  activeIngredient?: string;
+  presentation?: string;
+  concentration?: string;
+  dose: string;
+  frequency: string;
+  route?: string;
+  duration?: string;
+  quantity?: string;
+  instructions?: string;
+  notes?: string;
+  startDate?: string;                     // ISO 8601
+  endDate?: string;                       // ISO 8601
+  sortOrder?: number;
+}
+
+export interface CreateMedicalTreatmentRequest {
+  title?: string;
+  plan?: string;
+  recommendations?: string;
+  notes?: string;
+  startDate?: string;                     // ISO 8601
+  endDate?: string;                       // ISO 8601
+  isActive?: boolean;
+  medicationId?: string;                  // UUID opcional del catálogo de la clínica
+  treatmentMedications?: CreateTreatmentMedicationRequest[];
+}
+
+export interface CreateHistoryAppointmentRequest {
+  scheduledAt: string;                    // ISO 8601
+  durationMin?: number;
+  confirmedAt?: string;                   // ISO 8601
+  attendedAt?: string;                    // ISO 8601
+  cancelledAt?: string;                   // ISO 8601
+  rescheduledAt?: string;                 // ISO 8601
+  type: string;
+  status: string;
+  reason?: string;
+  notes?: string;
+  channel: string;
+}
+
 export interface CreateMedicalHistoryRequest {
   patientId: string;                       // obligatorio, UUID
   title: string;                           // obligatorio, no vacío
@@ -308,6 +352,8 @@ export interface CreateMedicalHistoryRequest {
   data?: Record<string, unknown>;          // objeto JSON opcional; respuestas del intake
   templateId?: string;                     // UUID opcional de plantilla
   templateSnapshot?: Record<string, unknown>;
+  medicalTreatments?: CreateMedicalTreatmentRequest[];
+  appointment?: CreateHistoryAppointmentRequest;
 }
 
 export interface UpdateMedicalHistoryRequest {
