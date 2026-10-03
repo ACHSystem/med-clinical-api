@@ -84,16 +84,16 @@ async function main() {
 
   // Create 10 patients
   const patientsData = [
-    { name: 'Ana', lastName: 'García', identify: 'ANA001', email: 'ana.garcia@email.com', phone: '+1234567890', birthDate: new Date('1985-03-15'), gender: 'Femenino', address: 'Calle Principal 123, Ciudad' },
-    { name: 'Carlos', lastName: 'López', identify: 'CAR002', email: 'carlos.lopez@email.com', phone: '+1234567891', birthDate: new Date('1978-07-22'), gender: 'Masculino', address: 'Avenida Central 456, Ciudad' },
-    { name: 'María', lastName: 'Rodríguez', identify: 'MAR003', email: 'maria.rodriguez@email.com', phone: '+1234567892', birthDate: new Date('1992-11-08'), gender: 'Femenino', address: 'Plaza Mayor 789, Ciudad' },
-    { name: 'Pedro', lastName: 'Martínez', identify: 'PED004', email: 'pedro.martinez@email.com', phone: '+1234567893', birthDate: new Date('1980-05-30'), gender: 'Masculino', address: 'Callejón Norte 321, Ciudad' },
-    { name: 'Laura', lastName: 'Fernández', identify: 'LAU005', email: 'laura.fernandez@email.com', phone: '+1234567894', birthDate: new Date('1988-09-12'), gender: 'Femenino', address: 'Boulevard Este 654, Ciudad' },
-    { name: 'Miguel', lastName: 'Torres', identify: 'MIG006', email: 'miguel.torres@email.com', phone: '+1234567895', birthDate: new Date('1975-01-25'), gender: 'Masculino', address: 'Avenida Oeste 987, Ciudad' },
-    { name: 'Sofía', lastName: 'Jiménez', identify: 'SOF007', email: 'sofia.jimenez@email.com', phone: '+1234567896', birthDate: new Date('1995-06-18'), gender: 'Femenino', address: 'Calle Sur 147, Ciudad' },
-    { name: 'Javier', lastName: 'Díaz', identify: 'JAV008', email: 'javier.diaz@email.com', phone: '+1234567897', birthDate: new Date('1982-12-03'), gender: 'Masculino', address: 'Plaza Norte 258, Ciudad' },
-    { name: 'Isabel', lastName: 'Ruiz', identify: 'ISI009', email: 'isabel.ruiz@email.com', phone: '+1234567898', birthDate: new Date('1990-04-07'), gender: 'Femenino', address: 'Pasaje Central 369, Ciudad' },
-    { name: 'Roberto', lastName: 'Sánchez', identify: 'ROB010', email: 'roberto.sanchez@email.com', phone: '+1234567899', birthDate: new Date('1973-08-14'), gender: 'Masculino', address: 'Avenida Sur 741, Ciudad' },
+    { name: 'Ana', lastName: 'García', identify: 'V-12345678', email: 'ana.garcia@email.com', phone: '+581234567890', birthDate: new Date('1985-03-15'), gender: 'Femenino', address: 'Calle Principal 123, Ciudad' },
+    { name: 'Carlos', lastName: 'López', identify: 'V-23456789', email: 'carlos.lopez@email.com', phone: '+581234567891', birthDate: new Date('1978-07-22'), gender: 'Masculino', address: 'Avenida Central 456, Ciudad' },
+    { name: 'María', lastName: 'Rodríguez', identify: 'V-34567890', email: 'maria.rodriguez@email.com', phone: '+581234567892', birthDate: new Date('1992-11-08'), gender: 'Femenino', address: 'Plaza Mayor 789, Ciudad' },
+    { name: 'Pedro', lastName: 'Martínez', identify: 'V-45678901', email: 'pedro.martinez@email.com', phone: '+581234567893', birthDate: new Date('1980-05-30'), gender: 'Masculino', address: 'Callejón Norte 321, Ciudad' },
+    { name: 'Laura', lastName: 'Fernández', identify: 'V-56789012', email: 'laura.fernandez@email.com', phone: '+581234567894', birthDate: new Date('1988-09-12'), gender: 'Femenino', address: 'Boulevard Este 654, Ciudad' },
+    { name: 'Miguel', lastName: 'Torres', identify: 'V-67890123', email: 'miguel.torres@email.com', phone: '+581234567895', birthDate: new Date('1975-01-25'), gender: 'Masculino', address: 'Avenida Oeste 987, Ciudad' },
+    { name: 'Sofía', lastName: 'Jiménez', identify: 'V-78901234', email: 'sofia.jimenez@email.com', phone: '+581234567896', birthDate: new Date('1995-06-18'), gender: 'Femenino', address: 'Calle Sur 147, Ciudad' },
+    { name: 'Javier', lastName: 'Díaz', identify: 'V-89012345', email: 'javier.diaz@email.com', phone: '+581234567897', birthDate: new Date('1982-12-03'), gender: 'Masculino', address: 'Plaza Norte 258, Ciudad' },
+    { name: 'Isabel', lastName: 'Ruiz', identify: 'V-90123456', email: 'isabel.ruiz@email.com', phone: '+581234567898', birthDate: new Date('1990-04-07'), gender: 'Femenino', address: 'Pasaje Central 369, Ciudad' },
+    { name: 'Roberto', lastName: 'Sánchez', identify: 'V-01234567', email: 'roberto.sanchez@email.com', phone: '+581234567899', birthDate: new Date('1973-08-14'), gender: 'Masculino', address: 'Avenida Sur 741, Ciudad' },
   ];
 
   // Patient.identify NO es unico en el schema (solo hay indice), asi que la guarda
