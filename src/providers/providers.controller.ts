@@ -15,17 +15,17 @@ export class ProvidersController {
 
   @Post()
   async create(@Body() dto: ProviderDto, @CurrentUser() user: CurrentUserData) {
-    return await this.providersService.create(dto, user.clinicId);
+    return await this.providersService.createProvider(dto, user.clinicId);
   }
 
   @Put(':id')
   async update(@Param('id') id: string, @Body() dto: ProviderDto) {
-    return await this.providersService.update(id, dto);
+    return await this.providersService.updateProvider(id, dto);
   }
 
   @Delete(':id')
   async remove(@Param('id') id: string) {
-    return await this.providersService.remove(id);
+    return await this.providersService.removeProvider(id);
   }
 
   @Post(':id/services')

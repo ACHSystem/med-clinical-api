@@ -6,11 +6,6 @@ export class ProviderListQueryDto extends PaginationQueryDto {
   @IsString()
   @IsOptional()
   type?: string;
-
-  @Transform(parseBooleanQuery)
-  @IsBoolean()
-  @IsOptional()
-  isActive?: boolean;
 }
 
 export class ProviderDto {

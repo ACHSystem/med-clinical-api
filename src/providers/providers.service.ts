@@ -10,17 +10,17 @@ export class ProvidersService {
   async getProviders(clinicId: string, query: ProviderListQueryDto) {
     const where = {
       clinicId,
-      isActive: query.isActive ?? true,
+      isActive: true,
       ...(query.type ? { type: query.type } : {}),
       ...(query.search
         ? {
-            OR: [
-              { name: { contains: query.search, mode: 'insensitive' as const } },
-              { businessName: { contains: query.search, mode: 'insensitive' as const } },
-              { identify: { contains: query.search, mode: 'insensitive' as const } },
-              { type: { contains: query.search, mode: 'insensitive' as const } },
-            ],
-          }
+          OR: [
+            { name: { contains: query.search, mode: 'insensitive' as const } },
+            { businessName: { contains: query.search, mode: 'insensitive' as const } },
+            { identify: { contains: query.search, mode: 'insensitive' as const } },
+            { type: { contains: query.search, mode: 'insensitive' as const } },
+          ],
+        }
         : {}),
     };
     const skip = (query.page - 1) * query.limit;
@@ -48,7 +48,7 @@ export class ProvidersService {
     return provider;
   }
 
-  async create(providers: ProviderDto, clinicId: string) {
+  async createProvider(providers: ProviderDto, clinicId: string) {
     const provider = await this.prisma.provider.create({ data: { ...providers, clinicId } });
     return {
       status: true,
@@ -57,7 +57,7 @@ export class ProvidersService {
     };
   }
 
-  async update(id: string, dto: ProviderDto) {
+  async updateProvider(id: string, dto: ProviderDto) {
     await this.findOne(id);
     const provider = await this.prisma.provider.update({ where: { id }, data: dto });
     return {
@@ -67,9 +67,12 @@ export class ProvidersService {
     };
   }
 
-  async remove(id: string) {
+  async removeProvider(id: string) {
     await this.findOne(id);
-    const provider = await this.prisma.provider.update({ where: { id }, data: { isActive: false } });
+    const provider = await this.prisma.provider.update({
+      where: { id },
+      data: { isActive: false }
+    });
     return {
       status: true,
       message: 'Proveedor eliminado exitosamente',
