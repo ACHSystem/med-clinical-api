@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query } from '@nestjs/common';
 import { PatientsService } from './patients.service';
 import { PatientDto, PatientListQueryDto } from './patients.dto';
 import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
+import { PaginationQueryDto } from 'src/common/pagination.dto';
 
 @Controller('patients')
 export class PatientsController {
@@ -10,6 +11,11 @@ export class PatientsController {
   @Get()
   async getPatients(@Query() query: PatientListQueryDto, @CurrentUser() user: CurrentUserData) {
     return await this.patientsService.getPatients(user.clinicId, query);
+  }
+
+  @Get('/autocomplete')
+  async getPatientSimple(@Query() query: PaginationQueryDto, @CurrentUser() user: CurrentUserData) {
+    return await this.patientsService.getPatientSimple(user.clinicId, query);
   }
 
   @Get(':id/medical-histories')

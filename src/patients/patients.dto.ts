@@ -1,6 +1,5 @@
-import { Transform } from 'class-transformer';
-import { IsBoolean, IsDateString, IsEmail, IsNotEmpty, IsOptional, IsString } from 'class-validator';
-import { PaginationQueryDto, parseBooleanQuery } from '../common/pagination.dto';
+import { IsDateString, IsEmail, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { PaginationQueryDto } from '../common/pagination.dto';
 
 export class PatientListQueryDto extends PaginationQueryDto {
   @IsString()

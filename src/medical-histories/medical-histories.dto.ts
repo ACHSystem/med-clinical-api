@@ -2,6 +2,24 @@ import { Type } from 'class-transformer';
 import { IsArray, IsBoolean, IsDateString, IsInt, IsNotEmpty, IsObject, IsOptional, IsString, IsUUID, Min, ValidateNested } from 'class-validator';
 import { PaginationQueryDto } from '../common/pagination.dto';
 
+export class AppointmentsListQueryDto extends PaginationQueryDto {
+  @IsString()
+  @IsOptional()
+  type?: string;
+
+  @IsUUID()
+  @IsOptional()
+  patientId?: string;
+
+  @IsDateString()
+  @IsOptional()
+  dateStart?: string;
+
+  @IsDateString()
+  @IsOptional()
+  dateTo?: string;
+}
+
 export class MedicalHistoryListQueryDto extends PaginationQueryDto {
   @IsString()
   @IsOptional()

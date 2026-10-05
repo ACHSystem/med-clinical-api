@@ -184,6 +184,8 @@ model Appointment {
   medicalHistoryId String?         @unique
   medicalHistory   MedicalHistory? @relation(fields: [medicalHistoryId], references: [id], onDelete: SetNull)
 
+  deleted Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

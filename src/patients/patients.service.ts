@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { toPaginatedResult } from '../common/pagination';
 import { PatientDto, PatientListQueryDto } from './patients.dto';
 import { MedicalHistoriesService } from 'src/medical-histories/medical-histories.service';
+import { PaginationQueryDto } from 'src/common/pagination.dto';
 
 @Injectable()
 export class PatientsService {
@@ -35,6 +36,43 @@ export class PatientsService {
         skip,
         take: query.limit,
         orderBy: { createdAt: 'desc' },
+      }),
+      this.prismaService.patient.count({ where }),
+    ]);
+    return toPaginatedResult(patients, total, query.page, query.limit);
+  }
+
+  async getPatientSimple(clinicId: string, query: PaginationQueryDto) {
+    const where = {
+      clinicId,
+      isActive: true,
+      ...(query.search
+        ? {
+          OR: [
+            { name: { contains: query.search, mode: 'insensitive' as const } },
+            { lastName: { contains: query.search, mode: 'insensitive' as const } },
+            { identify: { contains: query.search, mode: 'insensitive' as const } },
+            { email: { contains: query.search, mode: 'insensitive' as const } },
+            { phone: { contains: query.search, mode: 'insensitive' as const } },
+          ],
+        }
+        : {}),
+    };
+    const skip = (query.page - 1) * query.limit;
+    const [patients, total] = await Promise.all([
+      this.prismaService.patient.findMany({
+        where,
+        skip,
+        take: query.limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          name: true,
+          lastName: true,
+          phone: true,
+          email: true,
+          identify: true
+        }
       }),
       this.prismaService.patient.count({ where }),
     ]);

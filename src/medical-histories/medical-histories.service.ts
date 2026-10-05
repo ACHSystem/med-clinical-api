@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { toPaginatedResult } from '../common/pagination';
-import { CreateMedicalHistoryDto, MedicalHistoryListQueryDto, UpdateMedicalHistoryDto } from './medical-histories.dto';
+import { AppointmentsListQueryDto, CreateMedicalHistoryDto, MedicalHistoryListQueryDto, UpdateMedicalHistoryDto } from './medical-histories.dto';
 
 interface GetHistoryByPatientIdParams {
   patientId: string;
@@ -63,6 +63,74 @@ export class MedicalHistoriesService {
       this.prisma.medicalHistory.count({ where }),
     ]);
     return toPaginatedResult(histories, total, query.page, query.limit);
+  }
+
+  async getAppointments(clinicId: string, query: AppointmentsListQueryDto) {
+    const where = {
+      deleted: false,
+      clinicId,
+      ...(query.patientId ? { patientId: query.patientId } : {}),
+      ...(query.type ? { type: query.type } : {}),
+      ...(query.dateStart || query.dateTo
+        ? {
+          scheduledAt: {
+            ...(query.dateStart ? { gte: new Date(query.dateStart) } : {}),
+            ...(query.dateTo ? { lte: new Date(query.dateTo) } : {}),
+          },
+        }
+        : {}),
+      ...(query.search
+        ? {
+          OR: [
+            { reason: { contains: query.search, mode: 'insensitive' as const } },
+            { notes: { contains: query.search, mode: 'insensitive' as const } },
+          ],
+        }
+        : {}),
+    };
+    const skip = (query.page - 1) * query.limit;
+    const [appointments, total] = await Promise.all([
+      this.prisma.appointment.findMany({
+        where,
+        skip,
+        take: query.limit,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          type: true,
+          reason: true,
+          notes: true,
+          scheduledAt: true,
+          createdAt: true,
+          patient: {
+            select: {
+              id: true,
+              name: true,
+              lastName: true,
+              identify: true,
+            },
+          },
+        },
+      }),
+      this.prisma.appointment.count({ where }),
+    ]);
+    return toPaginatedResult(appointments, total, query.page, query.limit);
+  }
+
+  async getAppointmentsById(clinicId: string, id: string) {
+    const where = {
+      deleted: false,
+      clinicId,
+      id,
+    };
+    const appointments = await this.prisma.appointment.findFirst({
+      where,
+      include: {
+        patient: true,
+        medicalHistory: true,
+      }
+    });
+    return appointments;
   }
 
   /** Impide escribir una historia sobre un paciente de otra clinica (IDOR). */
