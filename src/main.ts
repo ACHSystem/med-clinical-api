@@ -14,9 +14,13 @@ async function bootstrap() {
   // IP real del cliente detras de un balanceador/proxy (necesario para throttling por IP)
   app.getHttpAdapter().getInstance().set('trust proxy', 1);
 
-  const corsOrigins = config.getOrThrow<string>('CORS_ORIGINS');
+  const corsOrigins = config
+    .getOrThrow<string>('CORS_ORIGINS')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
   app.enableCors({
-    origin: corsOrigins.split(',').map((origin) => origin.trim()),
+    origin: corsOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     maxAge: 600,
