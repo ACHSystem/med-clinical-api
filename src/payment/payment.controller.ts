@@ -1,8 +1,9 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query } from '@nestjs/common';
 import { PaymentService } from './payment.service';
 import { PaymentMethodDto, PaymentMethodListQueryDto } from './payment-info.dto';
-import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
+import { Roles } from '../auth/roles.decorator';
+import { Role } from '../generated/prisma/client';
 
 @Controller('payment-info')
 export class PaymentController {
@@ -13,18 +14,25 @@ export class PaymentController {
     return await this.paymentService.findAll(user.clinicId, query);
   }
 
+  @Roles(Role.DOCTOR)
   @Post()
   async create(@Body() dto: PaymentMethodDto, @CurrentUser() user: CurrentUserData) {
     return await this.paymentService.create(dto, user.clinicId);
   }
 
+  @Roles(Role.DOCTOR)
   @Put(':id')
-  async update(@Param('id') id: string, @Body() dto: PaymentMethodDto) {
-    return await this.paymentService.update(id, dto);
+  async update(
+    @Param('id') id: string,
+    @Body() dto: PaymentMethodDto,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    return await this.paymentService.update(id, dto, user.clinicId);
   }
 
+  @Roles(Role.DOCTOR)
   @Delete(':id')
-  async remove(@Param('id') id: string) {
-    return await this.paymentService.remove(id);
+  async remove(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
+    return await this.paymentService.remove(id, user.clinicId);
   }
 }

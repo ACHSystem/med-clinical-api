@@ -1,8 +1,9 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query } from '@nestjs/common';
 import { QuotesService } from './quotes.service';
 import { CreateQuoteDto, QuoteListQueryDto, UpdateQuoteDto } from './quotes.dto';
-import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
+import { Roles } from '../auth/roles.decorator';
+import { Role } from '../generated/prisma/client';
 
 @Controller('quotes')
 export class QuotesController {
@@ -20,11 +21,12 @@ export class QuotesController {
 
   @Put(':id')
   async update(@Param('id') id: string, @Body() dto: UpdateQuoteDto, @CurrentUser() user: CurrentUserData) {
-    return await this.quotesService.update(id, dto, user.clinicId);
+    return await this.quotesService.update(id, dto, user.clinicId, user.userId);
   }
 
+  @Roles(Role.DOCTOR)
   @Delete(':id')
   async remove(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
-    return await this.quotesService.remove(id, user.clinicId);
+    return await this.quotesService.remove(id, user.clinicId, user.userId);
   }
 }

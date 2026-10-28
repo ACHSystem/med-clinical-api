@@ -1,7 +1,9 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '../generated/prisma/client';
+import { AuditAction, Prisma } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { toPaginatedResult } from '../common/pagination';
+import { writeResponse } from '../common/api-response';
+import { AuditService } from '../audit/audit.service';
 import {
   CustomFieldDto,
   FormTemplateDto,
@@ -14,7 +16,10 @@ import {
 
 @Injectable()
 export class CustomizeService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService,
+  ) {}
 
   async getFormTemplates(clinicId: string, query: FormTemplateListQueryDto) {
     const where = {
@@ -71,7 +76,7 @@ export class CustomizeService {
         fields,
       );
 
-      return transaction.formTemplate.findFirstOrThrow({
+      const created = await transaction.formTemplate.findFirstOrThrow({
         where: { id: createdTemplate.id, clinicId },
         include: {
           fields: {
@@ -79,9 +84,19 @@ export class CustomizeService {
           },
         },
       });
+
+      await this.auditService.record({
+        entity: 'FormTemplate',
+        entityId: created.id,
+        action: AuditAction.CREATE,
+        metadata: { fields: ['name', 'condition', 'type'] },
+        clinicId,
+      }, transaction);
+
+      return created;
     });
 
-    return { status: true, message: 'Plantilla creada exitosamente', data: template };
+    return writeResponse('Plantilla creada exitosamente', template);
   }
 
   private async createORAssignCustomFieldToTemplate(
@@ -138,14 +153,40 @@ export class CustomizeService {
 
   async updateTemplate(id: string, dto: UpdateFormTemplateDto, clinicId: string) {
     await this.findTemplate(id, clinicId);
-    const template = await this.prisma.formTemplate.update({ where: { id }, data: dto });
-    return { status: true, message: 'Plantilla actualizada exitosamente', data: template };
+    const template = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.formTemplate.update({ where: { id }, data: dto });
+
+      await this.auditService.record({
+        entity: 'FormTemplate',
+        entityId: updated.id,
+        action: AuditAction.UPDATE,
+        metadata: { fields: Object.keys(dto) },
+        clinicId,
+      }, tx);
+
+      return updated;
+    });
+
+    return writeResponse('Plantilla actualizada exitosamente', template);
   }
 
   async deactivateTemplate(id: string, clinicId: string) {
     await this.findTemplate(id, clinicId);
-    const template = await this.prisma.formTemplate.update({ where: { id }, data: { isActive: false } });
-    return { status: true, message: 'Plantilla desactivada exitosamente', data: template };
+    const template = await this.prisma.$transaction(async (tx) => {
+      const deleted = await tx.formTemplate.update({ where: { id }, data: { isActive: false } });
+
+      await this.auditService.record({
+        entity: 'FormTemplate',
+        entityId: deleted.id,
+        action: AuditAction.DELETE,
+        metadata: { softDelete: true },
+        clinicId,
+      }, tx);
+
+      return deleted;
+    });
+
+    return writeResponse('Plantilla desactivada exitosamente', template);
   }
 
   async getFields(clinicId: string, query: CustomFieldListQueryDto) {
@@ -188,43 +229,70 @@ export class CustomizeService {
           update: { isActive: true },
           create: { name: 'General', description: 'Campos personalizados generales', clinicId },
         });
-    const field = await this.prisma.customField.create({
-      data: {
-        ...dto,
-        options: dto.options ?? [],
-        templateId: template.id,
-        unit: dto.unit,
-        helpText: dto.helpText,
-        placeholder: dto.placeholder,
-        minValue: dto.minValue,
-        maxValue: dto.maxValue,
-      },
+    const field = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.customField.create({
+        data: {
+          ...dto,
+          options: dto.options ?? [],
+          templateId: template.id,
+          unit: dto.unit,
+          helpText: dto.helpText,
+          placeholder: dto.placeholder,
+          minValue: dto.minValue,
+          maxValue: dto.maxValue,
+        },
+      });
+
+      await this.auditService.record({
+        entity: 'CustomField',
+        entityId: created.id,
+        action: AuditAction.CREATE,
+        metadata: { fields: Object.keys(dto) },
+        clinicId,
+      }, tx);
+
+      return created;
     });
-    return {
-      status: true,
-      message: 'Campo personalizado agregado exitosamente',
-      data: field,
-    };
+
+    return writeResponse('Campo personalizado agregado exitosamente', field);
   }
 
   async update(id: string, dto: UpdateCustomFieldDto, clinicId: string) {
     await this.findOne(id, clinicId);
-    const field = await this.prisma.customField.update({ where: { id }, data: dto });
-    return {
-      status: true,
-      message: 'Campo personalizado actualizado exitosamente',
-      data: field,
-    };
+    const field = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.customField.update({ where: { id }, data: dto });
+
+      await this.auditService.record({
+        entity: 'CustomField',
+        entityId: updated.id,
+        action: AuditAction.UPDATE,
+        metadata: { fields: Object.keys(dto) },
+        clinicId,
+      }, tx);
+
+      return updated;
+    });
+
+    return writeResponse('Campo personalizado actualizado exitosamente', field);
   }
 
   async remove(id: string, clinicId: string) {
     await this.findOne(id, clinicId);
-    const field = await this.prisma.customField.update({ where: { id }, data: { isActive: false } });
-    return {
-      status: true,
-      message: 'Campo personalizado eliminado exitosamente',
-      data: field,
-    };
+    const field = await this.prisma.$transaction(async (tx) => {
+      const deleted = await tx.customField.update({ where: { id }, data: { isActive: false } });
+
+      await this.auditService.record({
+        entity: 'CustomField',
+        entityId: deleted.id,
+        action: AuditAction.DELETE,
+        metadata: { softDelete: true },
+        clinicId,
+      }, tx);
+
+      return deleted;
+    });
+
+    return writeResponse('Campo personalizado eliminado exitosamente', field);
   }
 
   async reorder(fields: ReorderCustomFieldDto[], clinicId: string) {
@@ -243,17 +311,28 @@ export class CustomizeService {
       throw new BadRequestException('Los campos deben pertenecer a la misma plantilla');
     }
 
-    const updates = fields.map(f =>
-      this.prisma.customField.update({
-        where: { id: f.id },
-        data: { sortOrder: f.sortOrder, step: f.step },
-      })
-    );
-    const result = await this.prisma.$transaction(updates);
-    return {
-      status: true,
-      message: 'Campos reordenados exitosamente',
-      data: result,
-    };
+    const templateId = clinicFields[0].templateId;
+    const result = await this.prisma.$transaction(async (tx) => {
+      const updated = await Promise.all(
+        fields.map(f =>
+          tx.customField.update({
+            where: { id: f.id },
+            data: { sortOrder: f.sortOrder, step: f.step },
+          }),
+        ),
+      );
+
+      await this.auditService.record({
+        entity: 'FormTemplate',
+        entityId: templateId,
+        action: AuditAction.UPDATE,
+        metadata: { fields: fieldIds },
+        clinicId,
+      }, tx);
+
+      return updated;
+    });
+
+    return writeResponse('Campos reordenados exitosamente', result);
   }
 }

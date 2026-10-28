@@ -63,11 +63,11 @@ also avoids confirming that the id exists.
 
 ### F-04 — No rate limiting (High)
 
-`POST /api/auth/login` was an unthrottled password oracle, and
-`GET /api/services-costs/dolar/save` performs an outbound HTTP call and a write on
-every request, so it was usable both as a DoS amplifier and as a way to hammer the
-external rate provider. Limits are 5/min on login and register, 1/min on the dolar
-save, 100/min globally.
+`POST /api/auth/login` was an unthrottled password oracle, and the dollar capture
+performs an outbound HTTP call and a write on every request, so it was usable both as a
+DoS amplifier and as a way to hammer the external rate provider. The write route is now
+`POST /api/services-costs/dolar/save` (the old `GET` was removed). Limits are 5/min on
+login and register, 1/min on the dollar save, 100/min globally.
 
 Note the implementation trap: `ThrottlerGuard` runs **every** configured throttler on
 **every** route. An earlier attempt declared three named throttlers (`short`, `auth`,
@@ -145,8 +145,8 @@ explicitly out of scope for this pass.
 Prisma defaults required relations to `RESTRICT`, so the migration emits
 `ON DELETE RESTRICT` for all 7 foreign keys. Deleting a `User` that owns patients, or a
 `Provider` that has services, fails with a Prisma error rather than cascading or
-nulling. Since the soft-delete convention is `isActive: false` and only
-`medical-histories` hard-deletes, this is latent rather than an active bug, but it
+nulling. Since all deletes are soft (`isActive: false` or `deleted: true` for medical
+histories), this is latent rather than an active bug, but it
 becomes one as soon as a purge or a "delete clinic" feature exists. Decide per relation
 (`Cascade` for `QuoteItem` → `Quote`, `Restrict` or `SetNull` elsewhere) before adding
 the endpoint.

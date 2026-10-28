@@ -1,16 +1,24 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { toPaginatedResult } from '../common/pagination';
+import { writeResponse } from '../common/api-response';
+import { PaginationQueryDto } from '../common/pagination.dto';
+import { AuditService } from '../audit/audit.service';
+import { AuditAction } from '../generated/prisma/client';
 import { AppointmentsListQueryDto, CreateMedicalHistoryDto, MedicalHistoryListQueryDto, UpdateMedicalHistoryDto } from './medical-histories.dto';
 
 interface GetHistoryByPatientIdParams {
   patientId: string;
   clinicId: string;
+  query: PaginationQueryDto;
 }
 
 @Injectable()
 export class MedicalHistoriesService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService,
+  ) { }
 
   async getAllHistories(clinicId: string, query: MedicalHistoryListQueryDto) {
     const where = {
@@ -123,14 +131,19 @@ export class MedicalHistoriesService {
       clinicId,
       id,
     };
-    const appointments = await this.prisma.appointment.findFirst({
+    const appointment = await this.prisma.appointment.findFirst({
       where,
       include: {
         patient: true,
         medicalHistory: true,
       }
     });
-    return appointments;
+
+    if (!appointment) {
+      throw new NotFoundException('Cita no encontrada');
+    }
+
+    return appointment;
   }
 
   /** Impide escribir una historia sobre un paciente de otra clinica (IDOR). */
@@ -165,25 +178,32 @@ export class MedicalHistoriesService {
     return history;
   }
 
-  async getHistoryByPatientId({ patientId, clinicId }: GetHistoryByPatientIdParams) {
+  async getHistoryByPatientId({ patientId, clinicId, query }: GetHistoryByPatientIdParams) {
     await this.assertOwnsPatient(patientId, clinicId);
-    const histories = await this.prisma.medicalHistory.findMany({
-      where: { patientId, clinicId, deleted: false },
-      include: {
-        patient: true,
-        template: true,
-        medicalTreatments: {
-          include: {
-            treatmentMedications: {
-              include: {
-                medication: true,
+    const where = { patientId, clinicId, deleted: false };
+    const [histories, total] = await Promise.all([
+      this.prisma.medicalHistory.findMany({
+        where,
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          patient: true,
+          template: true,
+          medicalTreatments: {
+            include: {
+              treatmentMedications: {
+                include: {
+                  medication: true,
+                },
               },
             },
           },
         },
-      },
-    });
-    return histories;
+      }),
+      this.prisma.medicalHistory.count({ where }),
+    ]);
+    return toPaginatedResult(histories, total, query.page, query.limit);
   }
 
   async createMedicalHistory(dto: CreateMedicalHistoryDto, clinicId: string, userId: string) {
@@ -215,89 +235,155 @@ export class MedicalHistoriesService {
       }
     }
 
-    const history = await this.prisma.medicalHistory.create({
-      data: {
-        title: dto.title,
-        type: dto.type,
-        reason: dto.reason,
-        symptoms: dto.symptoms,
-        observations: dto.observations,
-        diagnosis: dto.diagnosis,
-        evaluation: dto.evaluation,
-        date: new Date(dto.date),
-        status: dto.status,
-        vitalSigns: dto.vitalSigns,
-        data: dto.data,
-        notes: dto.notes,
-        patientId: dto.patientId,
-        templateId: dto.templateId || null,
-        templateSnapshot: dto.templateSnapshot,
-        medicalTreatments: dto.medicalTreatments
-          ? {
-            create: dto.medicalTreatments.map(({ treatmentMedications, startDate, endDate, ...treatment }) => ({
-              ...treatment,
-              startDate: startDate ? new Date(startDate) : undefined,
-              endDate: endDate ? new Date(endDate) : undefined,
-              clinicId,
-              treatmentMedications: treatmentMedications
-                ? {
-                  create: treatmentMedications.map(({ startDate, endDate, ...medication }) => ({
-                    ...medication,
-                    startDate: startDate ? new Date(startDate) : undefined,
-                    endDate: endDate ? new Date(endDate) : undefined,
-                    clinicId,
-                  })),
-                }
-                : undefined,
-            })),
-          }
-          : undefined,
-        appointment: dto.appointment
-          ? {
-            create: {
-              ...dto.appointment,
-              scheduledAt: new Date(dto.appointment.scheduledAt),
-              confirmedAt: dto.appointment.confirmedAt ? new Date(dto.appointment.confirmedAt) : undefined,
-              attendedAt: dto.appointment.attendedAt ? new Date(dto.appointment.attendedAt) : undefined,
-              cancelledAt: dto.appointment.cancelledAt ? new Date(dto.appointment.cancelledAt) : undefined,
-              rescheduledAt: dto.appointment.rescheduledAt ? new Date(dto.appointment.rescheduledAt) : undefined,
-              patientId: dto.patientId,
-              clinicId,
-              userId,
-            },
-          }
-          : undefined,
+    const history = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.medicalHistory.create({
+        data: {
+          title: dto.title,
+          type: dto.type,
+          reason: dto.reason,
+          symptoms: dto.symptoms,
+          observations: dto.observations,
+          diagnosis: dto.diagnosis,
+          evaluation: dto.evaluation,
+          date: new Date(dto.date),
+          status: dto.status,
+          vitalSigns: dto.vitalSigns,
+          data: dto.data,
+          notes: dto.notes,
+          patientId: dto.patientId,
+          templateId: dto.templateId || null,
+          templateSnapshot: dto.templateSnapshot,
+          medicalTreatments: dto.medicalTreatments
+            ? {
+              create: dto.medicalTreatments.map(({ treatmentMedications, startDate, endDate, ...treatment }) => ({
+                ...treatment,
+                startDate: startDate ? new Date(startDate) : undefined,
+                endDate: endDate ? new Date(endDate) : undefined,
+                clinicId,
+                treatmentMedications: treatmentMedications
+                  ? {
+                    create: treatmentMedications.map(({ startDate, endDate, ...medication }) => ({
+                      ...medication,
+                      startDate: startDate ? new Date(startDate) : undefined,
+                      endDate: endDate ? new Date(endDate) : undefined,
+                      clinicId,
+                    })),
+                  }
+                  : undefined,
+              })),
+            }
+            : undefined,
+          appointment: dto.appointment
+            ? {
+              create: {
+                ...dto.appointment,
+                scheduledAt: new Date(dto.appointment.scheduledAt),
+                confirmedAt: dto.appointment.confirmedAt ? new Date(dto.appointment.confirmedAt) : undefined,
+                attendedAt: dto.appointment.attendedAt ? new Date(dto.appointment.attendedAt) : undefined,
+                cancelledAt: dto.appointment.cancelledAt ? new Date(dto.appointment.cancelledAt) : undefined,
+                rescheduledAt: dto.appointment.rescheduledAt ? new Date(dto.appointment.rescheduledAt) : undefined,
+                patientId: dto.patientId,
+                clinicId,
+                userId,
+              },
+            }
+            : undefined,
+          clinicId,
+          createdById: userId,
+        },
+      });
+
+      await this.auditService.record({
+        entity: 'MedicalHistory',
+        entityId: created.id,
+        action: AuditAction.CREATE,
+        metadata: { fields: ['title', 'type', 'status', 'templateId'] },
+        userId,
         clinicId,
-        createdById: userId,
-      },
+      }, tx);
+
+      return created;
     });
-    return {
-      status: true,
-      message: 'Historia médica agregada exitosamente',
-      data: history,
-    };
+
+    return writeResponse('Historia médica agregada exitosamente', history);
   }
 
-  async updateMedicalHistory(id: string, dto: UpdateMedicalHistoryDto, clinicId: string) {
+  async updateMedicalHistory(
+    id: string,
+    dto: UpdateMedicalHistoryDto,
+    clinicId: string,
+    userId: string,
+  ) {
     await this.findOne(id, clinicId);
-    const history = await this.prisma.medicalHistory.update({
-      where: { id },
-      data: dto,
+    const history = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.medicalHistory.update({
+        where: { id },
+        data: dto,
+      });
+
+      await this.auditService.record({
+        entity: 'MedicalHistory',
+        entityId: updated.id,
+        action: AuditAction.UPDATE,
+        metadata: { fields: Object.keys(dto) },
+        userId,
+        clinicId,
+      }, tx);
+
+      return updated;
     });
-    return {
-      status: true,
-      message: 'Historia médica actualizada exitosamente',
-      data: history,
-    };
+
+    return writeResponse('Historia médica actualizada exitosamente', history);
   }
 
-  async deleteMedicalHistory(id: string, clinicId: string) {
+  async deleteMedicalHistory(id: string, clinicId: string, userId: string) {
     await this.findOne(id, clinicId);
-    const history = await this.prisma.medicalHistory.update({ where: { id }, data: { deleted: true, deletedAt: new Date() } });
-    return {
-      status: true,
-      message: 'Historia médica eliminada exitosamente',
-      data: history,
-    };
+    const history = await this.prisma.$transaction(async (tx) => {
+      const deleted = await tx.medicalHistory.update({
+        where: { id },
+        data: { deleted: true, deletedAt: new Date() },
+      });
+
+      await this.auditService.record({
+        entity: 'MedicalHistory',
+        entityId: deleted.id,
+        action: AuditAction.DELETE,
+        metadata: { softDelete: true },
+        userId,
+        clinicId,
+      }, tx);
+
+      return deleted;
+    });
+
+    return writeResponse('Historia médica eliminada exitosamente', history);
+  }
+
+  async signMedicalHistory(id: string, clinicId: string, userId: string) {
+    const history = await this.findOne(id, clinicId);
+
+    if (history.signedAt) {
+      throw new ConflictException('La historia médica ya está firmada');
+    }
+
+    const signed = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.medicalHistory.update({
+        where: { id },
+        data: { signedAt: new Date(), signedById: userId },
+      });
+
+      await this.auditService.record({
+        entity: 'MedicalHistory',
+        entityId: updated.id,
+        action: AuditAction.SIGN,
+        metadata: { signedAt: updated.signedAt?.toISOString() },
+        userId,
+        clinicId,
+      }, tx);
+
+      return updated;
+    });
+
+    return writeResponse('Historia médica firmada exitosamente', signed);
   }
 }

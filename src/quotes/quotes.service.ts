@@ -1,11 +1,17 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { toPaginatedResult } from '../common/pagination';
+import { writeResponse } from '../common/api-response';
+import { AuditService } from '../audit/audit.service';
+import { AuditAction } from '../generated/prisma/client';
 import { CreateQuoteDto, QuoteListQueryDto, UpdateQuoteDto } from './quotes.dto';
 
 @Injectable()
 export class QuotesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService,
+  ) {}
 
   async getQuotes(clinicId: string, query: QuoteListQueryDto) {
     const where = {
@@ -63,53 +69,83 @@ export class QuotesService {
     }
 
     const { items, ...quoteData } = quotes;
-    const quote = await this.prisma.quote.create({
-      data: {
-        ...quoteData,
-        validUntil: quoteData.validUntil ? new Date(quoteData.validUntil) : undefined,
-        clinicId,
-        createdById: userId,
-        items: {
-          create: items.map(item => ({
-            ...item,
-            quantity: item.quantity || 1,
-            total: item.unitPrice * (item.quantity || 1),
-          })),
+    const quote = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.quote.create({
+        data: {
+          ...quoteData,
+          validUntil: quoteData.validUntil ? new Date(quoteData.validUntil) : undefined,
+          clinicId,
+          createdById: userId,
+          items: {
+            create: items.map(item => ({
+              ...item,
+              quantity: item.quantity || 1,
+              total: item.unitPrice * (item.quantity || 1),
+            })),
+          },
         },
-      },
-      include: { items: true, patient: true },
+        include: { items: true, patient: true },
+      });
+
+      await this.auditService.record({
+        entity: 'Quote',
+        entityId: created.id,
+        action: AuditAction.CREATE,
+        metadata: { fields: ['title', 'total', 'status', 'patientId', 'dolarId'] },
+        userId,
+        clinicId,
+      }, tx);
+
+      return created;
     });
-    return {
-      status: true,
-      message: 'Presupuesto agregado exitosamente',
-      data: quote,
-    };
+
+    return writeResponse('Presupuesto agregado exitosamente', quote);
   }
 
-  async update(id: string, quotes: UpdateQuoteDto, clinicId: string) {
+  async update(id: string, quotes: UpdateQuoteDto, clinicId: string, userId: string) {
     await this.findOne(id, clinicId);
-    const quote = await this.prisma.quote.update({
-      where: { id },
-      data: {
-        ...quotes,
-        validUntil: quotes.validUntil ? new Date(quotes.validUntil) : undefined,
-      },
-      include: { items: true, patient: true },
+    const quote = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.quote.update({
+        where: { id },
+        data: {
+          ...quotes,
+          validUntil: quotes.validUntil ? new Date(quotes.validUntil) : undefined,
+        },
+        include: { items: true, patient: true },
+      });
+
+      await this.auditService.record({
+        entity: 'Quote',
+        entityId: updated.id,
+        action: AuditAction.UPDATE,
+        metadata: { fields: Object.keys(quotes) },
+        userId,
+        clinicId,
+      }, tx);
+
+      return updated;
     });
-    return {
-      status: true,
-      message: 'Presupuesto actualizado exitosamente',
-      data: quote,
-    };
+
+    return writeResponse('Presupuesto actualizado exitosamente', quote);
   }
 
-  async remove(id: string, clinicId: string) {
+  async remove(id: string, clinicId: string, userId: string) {
     await this.findOne(id, clinicId);
-    const quote = await this.prisma.quote.update({ where: { id }, data: { isActive: false } });
-    return {
-      status: true,
-      message: 'Presupuesto eliminado exitosamente',
-      data: quote,
-    };
+    const quote = await this.prisma.$transaction(async (tx) => {
+      const deleted = await tx.quote.update({ where: { id }, data: { isActive: false } });
+
+      await this.auditService.record({
+        entity: 'Quote',
+        entityId: deleted.id,
+        action: AuditAction.DELETE,
+        metadata: { softDelete: true },
+        userId,
+        clinicId,
+      }, tx);
+
+      return deleted;
+    });
+
+    return writeResponse('Presupuesto eliminado exitosamente', quote);
   }
 }

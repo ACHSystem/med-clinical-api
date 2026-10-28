@@ -24,14 +24,15 @@ own services, and issues itemised quotes (presupuestos) to patients.
 | Actor | Role (`User.role`) | What they do |
 | --- | --- | --- |
 | Doctor | `DOCTOR` | Owns a clinic. Everything below is scoped to them. |
-| Assistant | `ASSISTANT` | Front-desk user; same data access, no special permissions implemented yet. |
+| Assistant | `ASSISTANT` | Front-desk user: reads everything, writes patients and quotes; clinical histories, templates, providers, costs, payments, dollar and deletions are DOCTOR-only. |
 
-`Patient`, `MedicalHistory` and `Quote` belong to a clinic. `ServiceCost` also belongs to
-a clinic, selected from the authenticated user's active clinic when created. Its current
-read, update and delete endpoints do not yet enforce that scope. `Dolar` is global.
+`Patient`, `MedicalHistory`, `Quote`, `ServiceCost`, `Provider`, `PaymentMethod` and the
+customize module belong to a clinic and are filtered by the active clinic on reads and
+writes. `Dolar` is global.
 
-There is no email verification, no password reset, no role-based permission check, and
-no audit trail of who edited a record.
+There is no email verification and no password reset. Role-based permissions are enforced
+by `RolesGuard` (see `docs/PERMISOS.md`) and every clinical/commercial mutation is recorded
+in `AuditLog` (see `docs/AUDITORIA_DATOS.md`).
 
 ---
 
@@ -108,14 +109,14 @@ The clinic's own price list: `name`, `description`, `price`. Creation associates
 with the active clinic from the authenticated user's token; it is soft-deleted.
 "Lo que incluye" is expected to go in `description` as free text; there is no structured
 inclusion list, and `ServiceCost` is not linked to quotes. The model does not record
-which clinic member created a service. Current read, update and delete endpoints do not
-yet enforce the clinic scope.
+which clinic member created a service, but `AuditLog` does. Read, update and delete
+endpoints are scoped to the active clinic.
 
 ### 2.6 Métodos de pago — `PaymentMethod`
 
 Bank account details the patient pays into: `bank`, `identify`, `phone`, `email`,
 `account`. Creation associates the record with the active clinic from the authenticated
-user's token. Current read, update and delete endpoints do not yet enforce that scope.
+user's token. Read, update and delete endpoints are scoped to that clinic.
 `PaymentMethod` is **not referenced by `Quote`** — a quote does not say which payment
 method was offered.
 
@@ -137,10 +138,11 @@ The itemised budget handed to the patient.
 
 ### 2.8 Tasa del dólar — `Dolar`
 
-Append-only history of USD rates. `GET /api/services-costs/dolar/save` fetches
-`https://ve.dolarapi.com/v1/dolares/oficial` with `axios` and stores `promedio` +
-`fechaActualizacion`. This is the only outbound network call in the codebase, and it
-swallows its own errors, returning `{ success: false }` with a 200 status.
+Append-only history of USD rates, one row per UTC calendar day + value. `POST
+/api/services-costs/dolar/save` fetches `https://ve.dolarapi.com/v1/dolares/oficial` with
+`axios`; `POST /api/services-costs/dolar` stores a manual rate. Duplicate day+value is
+idempotent, and an external failure returns `502 UPSTREAM_ERROR`. `GET
+/api/services-costs/dolar` is read-only and returns `404` when no rate exists.
 
 ---
 
@@ -204,9 +206,10 @@ does not exist in the schema yet.
 - `PaymentMethod` and `Dolar` are not referenced by `Quote` (§2.6, §2.7).
 - `Provider` / `ProviderService` are not referenced by `Quote` / `MedicalHistory` (§2.4),
   so "referred this patient to an external lab" cannot be recorded.
-- `Quote`/`MedicalHistory` cannot be filtered by date range, and list endpoints do not
-  paginate (`PaginationDto` exists in `src/common/base.dto.ts` but is unused).
-- No `role`-based authorisation: `DOCTOR` and `ASSISTANT` behave identically.
+- `Quote`/`MedicalHistory` cannot be filtered by every date range the UI would need, but
+  the list endpoints do paginate with `page`, `limit` and `search`.
+- Role-based authorisation is implemented for sensitive endpoints; the Angular frontend
+  still needs to hide those actions (`docs/PERMISOS.md`).
 
 ---
 
@@ -216,12 +219,12 @@ Global prefix `/api`. Every route requires `Authorization: Bearer <token>` excep
 `POST /api/auth/login` (see `AGENTS.md` for why `register` is not public). Tokens are
 signature-verified against `JWT_SECRET`; responses carry the Helmet header set and CORS
 is limited to `CORS_ORIGINS`. Rate limits: 100/min per IP overall, 5/min on
-`/auth/login` and `/auth/register`, 1/min on `GET /services-costs/dolar/save`.
+`/auth/login` and `/auth/register`, 1/min on `POST /services-costs/dolar/save`.
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| `POST` | `/auth/login` | Public. Returns `{ success, message, data: { access_token, user } }`. |
-| `POST` | `/auth/register` | Requires a token (gap: add to `routesIgnores`). |
+| `POST` | `/auth/login` | Public. Returns `{ status, message, data: { access_token, user } }`. |
+| `POST` | `/auth/register` | Requires a DOCTOR token; creates ASSISTANT users. |
 | `GET` | `/auth/profile` | Scoped. |
 | `GET` | `/` | Nest hello-world stub. |
 | `GET` | `/patients` | Scoped, paginated; filters by text, gender, active status and creation dates. |
@@ -242,25 +245,26 @@ is limited to `CORS_ORIGINS`. Rate limits: 100/min per IP overall, 5/min on
 | `PUT` | `/customize/reorder` | Scoped to active clinic. |
 | `GET` | `/providers` | Scoped, paginated; filters by text, type and active status. |
 | `POST` | `/providers` | Associates provider to active clinic. |
-| `PUT` | `/providers/:id` | Currently not clinic-scoped. |
-| `DELETE` | `/providers/:id` | Currently not clinic-scoped; soft delete. |
-| `POST` | `/providers/:id/services` | Global. |
-| `PUT` | `/providers/services/:serviceId` | Global. |
-| `DELETE` | `/providers/services/:serviceId` | Global soft delete. |
+| `PUT` | `/providers/:id` | Clinic-scoped. |
+| `DELETE` | `/providers/:id` | Clinic-scoped; soft delete. |
+| `POST` | `/providers/:id/services` | Clinic-scoped. |
+| `PUT` | `/providers/services/:serviceId` | Clinic-scoped. |
+| `DELETE` | `/providers/services/:serviceId` | Clinic-scoped; soft delete. |
 | `GET` | `/services-costs` | Scoped, paginated; filters by text, active status and price range. |
-| `GET` | `/services-costs/dolar` | Last stored rate. |
-| `GET` | `/services-costs/dolar/save` | Fetches the external API and stores a new rate. |
+| `GET` | `/services-costs/dolar` | Last stored rate (`404` if none). |
+| `POST` | `/services-costs/dolar` | Stores a manual rate. |
+| `POST` | `/services-costs/dolar/save` | Fetches the external API and stores a new rate (1/min). |
 | `POST` | `/services-costs` | Associates cost to active clinic. |
-| `PUT` | `/services-costs/:id` | Currently not clinic-scoped. |
-| `DELETE` | `/services-costs/:id` | Currently not clinic-scoped; soft delete. |
+| `PUT` | `/services-costs/:id` | Clinic-scoped. |
+| `DELETE` | `/services-costs/:id` | Clinic-scoped; soft delete. |
 | `GET` | `/quotes` | Scoped, paginated with `patient` + `items`; filters by text, status, patient, active status and creation dates. |
 | `POST` | `/quotes` | Scoped; rejects a `patientId` owned by another user. |
 | `PUT` | `/quotes/:id` | Scoped. |
 | `DELETE` | `/quotes/:id` | Scoped soft delete. |
 | `GET` | `/payment-info` | Scoped, paginated; filters by text and active status. |
 | `POST` | `/payment-info` | Associates method to active clinic. |
-| `PUT` | `/payment-info/:id` | Currently not clinic-scoped. |
-| `DELETE` | `/payment-info/:id` | Currently not clinic-scoped. |
+| `PUT` | `/payment-info/:id` | Clinic-scoped. |
+| `DELETE` | `/payment-info/:id` | Clinic-scoped; soft delete. |
 
 No `GET /quotes/:id`, `/providers/:id` or `/services-costs/:id` route exists even though
 the services implement `findOne` for some of them.
