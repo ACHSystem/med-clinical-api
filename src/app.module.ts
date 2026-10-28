@@ -18,6 +18,7 @@ import { AuthGuard } from './auth/auth.guard';
 import { RolesGuard } from './auth/roles.guard';
 import { ObservabilityModule } from './common/observability/observability.module';
 import { AuditModule } from './audit/audit.module';
+import { UsersModule } from './users/users.module';
 import * as Joi from 'joi';
 
 @Module({
@@ -53,7 +54,8 @@ import * as Joi from 'joi';
     MedicalHistoriesModule,
     ServicesCostsModule,
     QuotesModule,
-    PaymentModule
+    PaymentModule,
+    UsersModule
   ],
   controllers: [AppController],
   providers: [
