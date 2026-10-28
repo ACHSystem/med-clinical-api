@@ -15,9 +15,17 @@ export class ServicesCostsService {
   ) { }
 
   async getServicesAndCosts(clinicId: string, query: ServiceCostListQueryDto) {
-    const where = {
+    const where: Prisma.ServiceCostWhereInput = {
       clinicId,
-      isActive: true,
+      isActive: query.isActive ?? true,
+      ...(query.priceMin !== undefined || query.priceMax !== undefined
+        ? {
+            price: {
+              ...(query.priceMin !== undefined ? { gte: query.priceMin } : {}),
+              ...(query.priceMax !== undefined ? { lte: query.priceMax } : {}),
+            },
+          }
+        : {}),
       ...(query.search
         ? {
             OR: [
@@ -40,8 +48,14 @@ export class ServicesCostsService {
     return toPaginatedResult(servicesAndCosts, total, query.page, query.limit);
   }
 
-  async findOne(id: string, clinicId: string) {
-    const service = await this.prisma.serviceCost.findFirst({ where: { id, clinicId } });
+  async findOne(id: string, clinicId: string, includeInactive = false) {
+    const service = await this.prisma.serviceCost.findFirst({
+      where: {
+        id,
+        clinicId,
+        ...(includeInactive ? {} : { isActive: true }),
+      },
+    });
     if (!service) {
       throw new NotFoundException('Servicio no encontrado');
     }

@@ -1,9 +1,24 @@
-import { Transform } from 'class-transformer';
-import { IsBoolean, IsDate, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsBoolean, IsDate, IsNotEmpty, IsNumber, IsOptional, IsString, Min } from 'class-validator';
 import { PaginationQueryDto, parseBooleanQuery } from '../common/pagination.dto';
 
 export class ServiceCostListQueryDto extends PaginationQueryDto {
+  @Transform(parseBooleanQuery)
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
 
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  priceMin?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  priceMax?: number;
 }
 
 export class ServiceCostDto {
@@ -15,7 +30,9 @@ export class ServiceCostDto {
   @IsOptional()
   description?: string;
 
+  @Type(() => Number)
   @IsNumber()
+  @Min(0)
   @IsNotEmpty()
   price!: number;
 }

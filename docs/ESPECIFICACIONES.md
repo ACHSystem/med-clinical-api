@@ -100,16 +100,17 @@ token when created. The current model does not store which clinic member created
 `ProviderService` is the catalogue of what that provider offers: `name`,
 `description?`, `price`. Nested CRUD at `/api/providers/:id/services`.
 
-Providers are **not connected to anything else**: a provider or its services cannot be
-attached to a `MedicalHistory`, a `Patient`, or a `QuoteItem` today.
+`ProviderService` can be referenced by a `QuoteItem` (snapshot of name/description/price),
+but providers are still not linked to `MedicalHistory` or `Patient`.
 
 ### 2.5 Hoja de costos y servicios — `ServiceCost`
 
 The clinic's own price list: `name`, `description`, `price`. Creation associates the row
 with the active clinic from the authenticated user's token; it is soft-deleted.
 "Lo que incluye" is expected to go in `description` as free text; there is no structured
-inclusion list, and `ServiceCost` is not linked to quotes. The model does not record
-which clinic member created a service, but `AuditLog` does. Read, update and delete
+inclusion list. `ServiceCost` can be referenced by a `QuoteItem` (snapshot of
+name/description/price). The model does not record which clinic member created a service,
+but `AuditLog` does. Read, update and delete
 endpoints are scoped to the active clinic.
 
 ### 2.6 Métodos de pago — `PaymentMethod`
@@ -117,22 +118,30 @@ endpoints are scoped to the active clinic.
 Bank account details the patient pays into: `bank`, `identify`, `phone`, `email`,
 `account`. Creation associates the record with the active clinic from the authenticated
 user's token. Read, update and delete endpoints are scoped to that clinic.
-`PaymentMethod` is **not referenced by `Quote`** — a quote does not say which payment
-method was offered.
+`Quote.paymentMethodId` optionally records which method was offered for a budget.
 
 ### 2.7 Presupuestos — `Quote`, `QuoteItem`
 
-The itemised budget handed to the patient.
+The itemised, versioned budget handed to the patient.
 
-- `Quote`: `title`, `description?`, `date`, `validUntil?`, `status` (default `"pending"`,
-  free text), `total`, `patientId`, `clinicId`, `createdById`, and `dolarId` — a
-  **snapshot reference to the USD rate in effect when the quote was created**, so a later
-  rate update never changes an issued quote. The clinic and author come from the
-  authenticated user, not the request body.
-- `QuoteItem`: `name`, `description?`, `quantity` (default 1), `unitPrice`, `total`.
-  The service computes each item total as `unitPrice × quantity`, but **`Quote.total`
-  itself is taken from the request body and is not recomputed** — the client is trusted
-  to keep them consistent (see §4).
+- `Quote`: `title`, `description?`, `date`, `validUntil?`, `status` (`QuoteStatus`:
+  `DRAFT | SENT | APPROVED | REJECTED | EXPIRED | CANCELLED`), `version`, `rootQuoteId`,
+  `supersedesId`, `supersededAt?`, `currency` (ISO 4217, default `USD`),
+  `exchangeRate` (snapshot of `Dolar.value`), `subtotal`, `discount`, `tax`, `total`,
+  `paymentMethodId?`, `issuedAt?`, `approvedAt?`, `rejectedAt?`, `patientId`, `clinicId`,
+  `createdById`, and `dolarId`. Clinic and author come from the authenticated user.
+- `QuoteItem`: `name`, `description?`, `quantity` (default 1), `unitPrice`, `total`,
+  `sortOrder`, and optional `serviceCostId` / `providerServiceId`.
+  `name`, `description` and `unitPrice` are snapshots: changing the catalogue later does
+  not alter a saved quote.
+- Totals are computed server-side by one domain function:
+  `item.total = unitPrice × quantity`; `subtotal = Σ item.total`;
+  `total = subtotal − discount + tax`. Rounding is `HALF_UP` to 2 decimals per line and
+  then on each aggregate. The client cannot send `total`.
+- Only `DRAFT` is editable. `SENT` or higher is immutable; `POST /quotes/:id/revise`
+  creates a new `DRAFT` version, marks the previous one as superseded and keeps the root
+  reference. `GET /quotes` returns only the latest version unless
+  `includeSuperseded=true`.
 - **There is no PDF/download route.** "Visualizar o descargar el presupuesto" is
   unimplemented; quotes are JSON only.
 
@@ -202,10 +211,9 @@ does not exist in the schema yet.
 
 ### 3.5 Other gaps worth tracking
 
-- `Quote.status` is an unconstrained string with no transition rules or history.
-- `PaymentMethod` and `Dolar` are not referenced by `Quote` (§2.6, §2.7).
-- `Provider` / `ProviderService` are not referenced by `Quote` / `MedicalHistory` (§2.4),
-  so "referred this patient to an external lab" cannot be recorded.
+- `ProviderService` can be attached to a `QuoteItem`, but `Provider` is still not linked
+  to `MedicalHistory`, so "referred this patient to an external lab" is not recorded on
+  the clinical side.
 - `Quote`/`MedicalHistory` cannot be filtered by every date range the UI would need, but
   the list endpoints do paginate with `page`, `limit` and `search`.
 - Role-based authorisation is implemented for sensitive endpoints; the Angular frontend
@@ -251,33 +259,41 @@ is limited to `CORS_ORIGINS`. Rate limits: 100/min per IP overall, 5/min on
 | `PUT` | `/providers/services/:serviceId` | Clinic-scoped. |
 | `DELETE` | `/providers/services/:serviceId` | Clinic-scoped; soft delete. |
 | `GET` | `/services-costs` | Scoped, paginated; filters by text, active status and price range. |
+| `GET` | `/services-costs/:id` | Scoped detail (`404` if inactive or from another clinic). |
 | `GET` | `/services-costs/dolar` | Last stored rate (`404` if none). |
 | `POST` | `/services-costs/dolar` | Stores a manual rate. |
 | `POST` | `/services-costs/dolar/save` | Fetches the external API and stores a new rate (1/min). |
 | `POST` | `/services-costs` | Associates cost to active clinic. |
 | `PUT` | `/services-costs/:id` | Clinic-scoped. |
 | `DELETE` | `/services-costs/:id` | Clinic-scoped; soft delete. |
-| `GET` | `/quotes` | Scoped, paginated with `patient` + `items`; filters by text, status, patient, active status and creation dates. |
-| `POST` | `/quotes` | Scoped; rejects a `patientId` owned by another user. |
-| `PUT` | `/quotes/:id` | Scoped. |
-| `DELETE` | `/quotes/:id` | Scoped soft delete. |
+| `GET` | `/quotes` | Scoped, paginated with relations; filters by text, status, patient, payment method, currency, active status and creation dates. Only latest versions by default. |
+| `GET` | `/quotes/:id` | Scoped detail with relations. |
+| `GET` | `/quotes/:id/versions` | Scoped full version history. |
+| `POST` | `/quotes` | Scoped, transactional; validates patient, dollar, payment method, dates and item snapshots. |
+| `PUT` | `/quotes/:id` | Scoped; only `DRAFT` (or `{isActive:true}` reactivation). |
+| `POST` | `/quotes/:id/revise` | Scoped; creates a new `DRAFT` version and supersedes the previous one. |
+| `PUT` | `/quotes/:id/send` | `DRAFT → SENT`. |
+| `PUT` | `/quotes/:id/approve` | DOCTOR; `SENT → APPROVED`. |
+| `PUT` | `/quotes/:id/reject` | DOCTOR; `SENT → REJECTED`. |
+| `PUT` | `/quotes/:id/cancel` | `DRAFT/SENT/APPROVED → CANCELLED`. |
+| `PUT` | `/quotes/:id/expire` | `SENT/APPROVED → EXPIRED`. |
+| `DELETE` | `/quotes/:id` | DOCTOR; scoped soft delete of the latest version. |
 | `GET` | `/payment-info` | Scoped, paginated; filters by text and active status. |
 | `POST` | `/payment-info` | Associates method to active clinic. |
 | `PUT` | `/payment-info/:id` | Clinic-scoped. |
 | `DELETE` | `/payment-info/:id` | Clinic-scoped; soft delete. |
 
-No `GET /quotes/:id`, `/providers/:id` or `/services-costs/:id` route exists even though
-the services implement `findOne` for some of them.
+No `GET /providers/:id` or `GET /payment-info/:id` route exists even though the services
+implement `findOne` for some of them.
 
 ---
 
 ## 5. Open decisions
 
-1. **Who computes the quote total?** `Quote.total` arrives from the request body while
-   item totals are computed server-side. Pick one (recommended: server computes the
-   total from items and ignores the client value) and write it down here.
-2. **Is a quote immutable once issued?** If so, "editing" must issue a revision instead
-   of mutating the row, and `validUntil` becomes meaningful.
+1. ~~**Who computes the quote total?**~~ Resolved: the server computes line, subtotal,
+   discount, tax and total; the client cannot send `total`.
+2. ~~**Is a quote immutable once issued?**~~ Resolved: `DRAFT` is editable, `SENT` or
+   higher is immutable, and `POST /quotes/:id/revise` issues a new version.
 3. **Appointments vs. history records**: are they one table or two? The product text
    implies a single timeline per patient; the schema change depends on that answer.
 4. **Template versioning**: if a form template is edited after patients were evaluated

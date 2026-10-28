@@ -26,7 +26,9 @@ puede ser `DOCTOR` en un consultorio y `ASSISTANT` en otro.
 | Métodos de pago: leer | Sí | Sí |
 | Métodos de pago: crear / editar / borrar | Sí | No |
 | Presupuestos: leer | Sí | Sí |
-| Presupuestos: crear / editar / reactivar | Sí | Sí |
+| Presupuestos: crear / editar borrador / reactivar / revisar | Sí | Sí |
+| Presupuestos: emitir / cancelar / vencer | Sí | Sí |
+| Presupuestos: aprobar / rechazar | Sí | No |
 | Presupuestos: borrar | Sí | No |
 | Auditoría: consultar | Sí | No |
 | Métricas: scrapear con `x-metrics-token` | Servicio externo | Servicio externo |
@@ -51,7 +53,8 @@ inútiles, el frontend debe:
    - Proveedores: alta, edición, borrado y CRUD de servicios.
    - Costos: alta, edición, borrado y guardado de dólar.
    - Métodos de pago: alta, edición y borrado.
-   - Presupuestos: borrado.
+   - Presupuestos: aprobar, rechazar y borrado (el resto de acciones de presupuesto sí
+     están disponibles para ASSISTANT).
    - Header/dashboard: “Nueva consulta”.
 3. Opcional: `canMatch`/`canActivate` por ruta para impedir el acceso directo a pantallas
    exclusivas de DOCTOR. Si se mantiene lectura para ASSISTANT, no hace falta bloquear la ruta,

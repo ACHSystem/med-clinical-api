@@ -21,6 +21,15 @@ enum AuditAction {
   SIGN
 }
 
+enum QuoteStatus {
+  DRAFT
+  SENT
+  APPROVED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
 // Identidad de la persona. NO es el tenant: un mismo User puede trabajar en varias Clinicas.
 model User {
   id        String   @id @default(uuid())
@@ -389,6 +398,8 @@ model ProviderService {
   providerId String
   provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
 
+  quoteItems QuoteItem[]
+
   @@index([providerId, isActive])
 }
 
@@ -404,6 +415,8 @@ model ServiceCost {
 
   clinicId String
   clinic   Clinic @relation(fields: [clinicId], references: [id])
+
+  quoteItems QuoteItem[]
 
   @@index([clinicId, isActive])
 }
@@ -458,23 +471,45 @@ model PaymentMethod {
   clinicId String
   clinic   Clinic @relation(fields: [clinicId], references: [id])
 
+  quotes Quote[]
+
   @@index([clinicId, isActive])
 }
 
-// Presupuesto
+// Presupuesto versionado. Un presupuesto emitido es inmutable: se edita el DRAFT
+// o se crea una nueva version con /revise.
 model Quote {
-  id          String    @id @default(uuid())
-  title       String
-  description String?
-  date        DateTime  @default(now())
-  validUntil  DateTime?
-  dolarId     String
-  dolar       Dolar     @relation(fields: [dolarId], references: [id])
-  total       Decimal   @db.Decimal(10, 2)
-  status      String    @default("pending")
-  isActive    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id           String      @id @default(uuid())
+  title        String
+  description  String?
+  date         DateTime    @default(now())
+  validUntil   DateTime?
+  dolarId      String
+  dolar        Dolar       @relation(fields: [dolarId], references: [id])
+  currency     String      @default("USD")
+  exchangeRate Decimal     @db.Decimal(12, 4)
+  subtotal     Decimal     @db.Decimal(12, 2)
+  discount     Decimal     @default(0) @db.Decimal(12, 2)
+  tax          Decimal     @default(0) @db.Decimal(12, 2)
+  total        Decimal     @db.Decimal(12, 2)
+  status       QuoteStatus @default(DRAFT)
+  version      Int         @default(1)
+  isActive     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  // Versionado: la raiz se referencia a si misma; cada revision apunta a la anterior.
+  rootQuoteId  String?
+  rootQuote    Quote?    @relation("QuoteVersions", fields: [rootQuoteId], references: [id], onDelete: SetNull)
+  rootVersions Quote[]   @relation("QuoteVersions")
+  supersedesId String?   @unique
+  supersedes   Quote?    @relation("QuoteSupersede", fields: [supersedesId], references: [id], onDelete: SetNull)
+  supersededBy Quote?    @relation("QuoteSupersede")
+  supersededAt DateTime?
+
+  issuedAt   DateTime?
+  approvedAt DateTime?
+  rejectedAt DateTime?
 
   patientId   String
   patient     Patient @relation(fields: [patientId], references: [id])
@@ -483,14 +518,21 @@ model Quote {
   createdById String
   createdBy   User    @relation("QuoteAuthor", fields: [createdById], references: [id])
 
+  paymentMethodId String?
+  paymentMethod   PaymentMethod? @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+
   items QuoteItem[]
 
   @@index([clinicId, createdAt])
+  @@index([clinicId, supersededAt, createdAt])
+  @@index([rootQuoteId, version])
   @@index([patientId])
   @@index([createdById])
+  @@index([paymentMethodId])
 }
 
-// Elementos del presupuesto
+// Elementos del presupuesto. name/description/unitPrice son snapshot: un cambio
+// posterior en ServiceCost o ProviderService no altera el presupuesto.
 model QuoteItem {
   id          String   @id @default(uuid())
   name        String
@@ -498,10 +540,19 @@ model QuoteItem {
   quantity    Int      @default(1)
   unitPrice   Decimal  @db.Decimal(10, 2)
   total       Decimal  @db.Decimal(10, 2)
+  sortOrder   Int      @default(0)
   createdAt   DateTime @default(now())
 
   quoteId String
   quote   Quote  @relation(fields: [quoteId], references: [id], onDelete: Cascade)
 
+  serviceCostId String?
+  serviceCost   ServiceCost? @relation(fields: [serviceCostId], references: [id], onDelete: SetNull)
+
+  providerServiceId String?
+  providerService   ProviderService? @relation(fields: [providerServiceId], references: [id], onDelete: SetNull)
+
   @@index([quoteId])
+  @@index([serviceCostId])
+  @@index([providerServiceId])
 }

@@ -1,20 +1,56 @@
-import { Equals, IsBoolean, IsDateString, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, IsArray, ValidateNested } from 'class-validator';
+import {
+  ArrayNotEmpty,
+  Equals,
+  IsArray,
+  IsBoolean,
+  IsDateString,
+  IsEnum,
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+  Min,
+  ValidateNested,
+} from 'class-validator';
 import { Transform, Type } from 'class-transformer';
-import { PaginationQueryDto } from '../common/pagination.dto';
+import {
+  PaginationQueryDto,
+  parseBooleanQuery,
+} from '../common/pagination.dto';
+import { QuoteStatus } from '../generated/prisma/client';
+
+const ISO_CURRENCY = /^[A-Z]{3}$/;
 
 export class QuoteListQueryDto extends PaginationQueryDto {
-  @Transform(({ value }) => (value === 'true' ? true : value === 'false' ? false : value))
+  @Transform(parseBooleanQuery)
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
 
-  @IsString()
+  @IsEnum(QuoteStatus)
   @IsOptional()
-  status?: string;
+  status?: QuoteStatus;
 
   @IsUUID()
   @IsOptional()
   patientId?: string;
+
+  @IsUUID()
+  @IsOptional()
+  paymentMethodId?: string;
+
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.toUpperCase() : value,
+  )
+  @Matches(ISO_CURRENCY, {
+    message: 'currency debe ser un código ISO 4217 de 3 letras',
+  })
+  @IsOptional()
+  currency?: string;
 
   @IsDateString()
   @IsOptional()
@@ -23,24 +59,52 @@ export class QuoteListQueryDto extends PaginationQueryDto {
   @IsDateString()
   @IsOptional()
   createdTo?: string;
+
+  /** Por defecto la lista solo devuelve la última versión de cada presupuesto. */
+  @Transform(parseBooleanQuery)
+  @IsBoolean()
+  @IsOptional()
+  includeSuperseded?: boolean;
 }
 
-export class CreateQuoteItemDto {
+export class QuoteItemDto {
+  /** Ítem referenciado al catálogo de costos de la clínica. */
+  @IsUUID()
+  @IsOptional()
+  serviceCostId?: string;
+
+  /** Ítem referenciado a un servicio de proveedor de la clínica. */
+  @IsUUID()
+  @IsOptional()
+  providerServiceId?: string;
+
+  /** Obligatorio solo para ítems libres. */
   @IsString()
-  @IsNotEmpty()
-  name!: string;
+  @IsOptional()
+  name?: string;
 
   @IsString()
   @IsOptional()
   description?: string;
 
-  @IsNumber()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @IsOptional()
   quantity?: number;
 
+  /** Obligatorio solo para ítems libres. */
+  @Type(() => Number)
   @IsNumber()
-  @IsNotEmpty()
-  unitPrice!: number;
+  @Min(0)
+  @IsOptional()
+  unitPrice?: number;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  sortOrder?: number;
 }
 
 export class CreateQuoteDto {
@@ -54,13 +118,34 @@ export class CreateQuoteDto {
 
   @IsDateString()
   @IsOptional()
+  date?: string;
+
+  @IsDateString()
+  @IsOptional()
   validUntil?: string;
 
-  @IsNumber()
-  @IsNotEmpty()
-  total!: number;
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.toUpperCase() : value,
+  )
+  @Matches(ISO_CURRENCY, {
+    message: 'currency debe ser un código ISO 4217 de 3 letras',
+  })
+  @IsOptional()
+  currency?: string;
 
-  @IsString()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  discount?: number;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  tax?: number;
+
+  @IsUUID()
   @IsNotEmpty()
   dolarId!: string;
 
@@ -68,10 +153,21 @@ export class CreateQuoteDto {
   @IsNotEmpty()
   patientId!: string;
 
+  @IsUUID()
+  @IsOptional()
+  paymentMethodId?: string;
+
+  @IsIn([QuoteStatus.DRAFT, QuoteStatus.SENT], {
+    message: 'status solo puede ser DRAFT o SENT al crear un presupuesto',
+  })
+  @IsOptional()
+  status?: QuoteStatus;
+
   @IsArray()
+  @ArrayNotEmpty()
   @ValidateNested({ each: true })
-  @Type(() => CreateQuoteItemDto)
-  items!: CreateQuoteItemDto[];
+  @Type(() => QuoteItemDto)
+  items!: QuoteItemDto[];
 }
 
 export class UpdateQuoteDto {
@@ -85,16 +181,50 @@ export class UpdateQuoteDto {
 
   @IsDateString()
   @IsOptional()
+  date?: string;
+
+  @IsDateString()
+  @IsOptional()
   validUntil?: string;
 
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.toUpperCase() : value,
+  )
+  @Matches(ISO_CURRENCY, {
+    message: 'currency debe ser un código ISO 4217 de 3 letras',
+  })
+  @IsOptional()
+  currency?: string;
+
+  @Type(() => Number)
   @IsNumber()
+  @Min(0)
   @IsOptional()
-  total?: number;
+  discount?: number;
 
-  @IsString()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
   @IsOptional()
-  status?: string;
+  tax?: number;
 
+  @IsUUID()
+  @IsOptional()
+  dolarId?: string;
+
+  @IsUUID()
+  @IsOptional()
+  paymentMethodId?: string;
+
+  /** Si se envía, reemplaza todos los ítems del borrador en la misma transacción. */
+  @IsArray()
+  @ArrayNotEmpty()
+  @ValidateNested({ each: true })
+  @Type(() => QuoteItemDto)
+  @IsOptional()
+  items?: QuoteItemDto[];
+
+  /** Solo para reactivar un presupuesto dado de baja; no permite desactivar por PUT. */
   @IsBoolean()
   @Equals(true)
   @IsOptional()

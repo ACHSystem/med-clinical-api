@@ -243,12 +243,17 @@ Base: `/api/services-costs`.
 | Método | Ruta | Rol | Respuesta |
 | --- | --- | --- | --- |
 | `GET` | `/services-costs` | Cualquiera | `{data,pagination}` |
+| `GET` | `/services-costs/:id` | Cualquiera | `{data}` o `404 NOT_FOUND` |
 | `POST` | `/services-costs` | DOCTOR | `{status,message,data}` |
 | `PUT` | `/services-costs/:id` | DOCTOR | `{status,message,data}` |
 | `DELETE` | `/services-costs/:id` | DOCTOR | `{status,message,data}` |
 | `GET` | `/services-costs/dolar` | Cualquiera | `{data}` o `404 NOT_FOUND` |
 | `POST` | `/services-costs/dolar` | DOCTOR | `{status,message,data}` |
 | `POST` | `/services-costs/dolar/save` | DOCTOR | `{status,message,data}` — 1/min |
+
+`GET /services-costs` filtra por `search`, `isActive` (por defecto `true`), `priceMin` y
+`priceMax`. `GET/PUT/DELETE /services-costs/:id` filtran por la clínica activa y ocultan
+los servicios inactivos: un segundo borrado o un id de otra clínica responde `404`.
 
 ### 7.1 Última tasa
 
@@ -276,24 +281,68 @@ Base: `/api/services-costs`.
 
 ## 8. Quotes (presupuestos)
 
-Base: `/api/quotes`.
+Base: `/api/quotes`. Contrato detallado para frontend:
+[`docs/QUOTES_FRONTEND.md`](QUOTES_FRONTEND.md).
 
 | Método | Ruta | Rol | Respuesta |
 | --- | --- | --- | --- |
-| `GET` | `/quotes` | Cualquiera | `{data,pagination}` con `patient` e `items` |
+| `GET` | `/quotes` | Cualquiera | `{data,pagination}` |
+| `GET` | `/quotes/:id` | Cualquiera | `{data}` |
+| `GET` | `/quotes/:id/versions` | Cualquiera | `{data}` con todas las versiones |
 | `POST` | `/quotes` | Cualquiera | `{status,message,data}` |
-| `PUT` | `/quotes/:id` | Cualquiera | `{status,message,data}` |
+| `PUT` | `/quotes/:id` | Cualquiera | `{status,message,data}` — solo `DRAFT` |
+| `POST` | `/quotes/:id/revise` | Cualquiera | `{status,message,data}` — nueva versión |
+| `PUT` | `/quotes/:id/send` | Cualquiera | `{status,message,data}` — `DRAFT → SENT` |
+| `PUT` | `/quotes/:id/approve` | DOCTOR | `{status,message,data}` — `SENT → APPROVED` |
+| `PUT` | `/quotes/:id/reject` | DOCTOR | `{status,message,data}` — `SENT → REJECTED` |
+| `PUT` | `/quotes/:id/cancel` | Cualquiera | `DRAFT/SENT/APPROVED → CANCELLED` |
+| `PUT` | `/quotes/:id/expire` | Cualquiera | `SENT/APPROVED → EXPIRED` |
 | `DELETE` | `/quotes/:id` | DOCTOR | `{status,message,data}` con `isActive:false` |
 
-- `Quote.total` lo envía el cliente; el servidor no lo recalcula.
-- Cada `QuoteItem.total` lo calcula el servidor (`unitPrice × quantity`).
-- `dolarId` debe existir; un id inválido produce `500 INTERNAL_ERROR` (validar en el cliente).
+### 8.1 Estados y versionado
+
+`QuoteStatus`: `DRAFT`, `SENT`, `APPROVED`, `REJECTED`, `EXPIRED`, `CANCELLED`.
+
+- Solo `DRAFT` se edita con `PUT`.
+- `SENT` o superior es inmutable: para cambiarlo se usa `POST /quotes/:id/revise`.
+- `revise` crea un `DRAFT` con `version + 1`, `supersedesId = id anterior`,
+  `rootQuoteId = raíz de la cadena` y marca la versión anterior con `supersededAt`.
+- `GET /quotes` devuelve por defecto solo la última versión (`supersededAt: null`).
+  `includeSuperseded=true` incluye el historial.
+- `DELETE` solo aplica a la última versión activa; una versión reemplazada responde `409`.
+
+### 8.2 Totales y redondeo
+
+El cliente **no envía `total`**; si lo envía, `forbidNonWhitelisted` responde `400`.
+
+- `item.total = unitPrice × quantity`
+- `subtotal = suma de item.total`
+- `total = subtotal − discount + tax`
+- Redondeo `HALF_UP` a 2 decimales por línea y luego en subtotal, descuento, impuesto y
+  total.
+- `discount` y `tax` son montos absolutos (no porcentajes), no negativos; el descuento no
+  puede superar el subtotal.
+
+### 8.3 Ítems y snapshots
+
+- Ítem libre: requiere `name` y `unitPrice`.
+- Ítem de catálogo: `serviceCostId` (costo de la clínica) o `providerServiceId` (servicio
+  de un proveedor de la clínica), nunca ambos.
+- Para ítems referenciados el servidor copia `name`, `description` y `unitPrice` del
+  catálogo. Cambiar el precio del catálogo no altera presupuestos ya guardados.
+- En `PUT` de un borrador, enviar `items` reemplaza todos los ítems en una transacción.
+
+### 8.4 Validaciones
+
+- Paciente de otra clínica o inactivo → `404`.
+- `dolarId` inexistente → `404 Tasa de dólar no encontrada`.
+- `paymentMethodId` de otra clínica o inactivo → `404`.
+- `validUntil` anterior a `date` → `400`.
+- `currency` debe ser ISO 4217 de 3 letras (`USD` por defecto).
+- Todas las rutas filtran por `clinicId`; un id de otra clínica responde `404`.
 - `GET /quotes?isActive=false` lista presupuestos inactivos.
-- `PUT /quotes/:id` no opera sobre un presupuesto inactivo salvo `{isActive:true}`, que lo
-  reactiva explícitamente. `isActive:false` no se acepta por `PUT`.
-- `DELETE /quotes/:id` solo opera sobre activos; un segundo borrado responde `404`.
-- No se puede crear un presupuesto para un paciente inactivo.
-- No existe `GET /quotes/:id`.
+- `PUT /quotes/:id` con `{isActive:true}` reactiva un presupuesto inactivo; no se puede
+  enviar `isActive:false`.
 
 ---
 
@@ -353,5 +402,12 @@ Detalle en [`docs/OPERACION.md`](OPERACION.md).
 5. `GET /services-costs/dolar/save` fue eliminado; usar `POST`.
 6. Los errores traen `code` y `requestId`.
 7. El ASSISTANT recibe `403` en acciones restringidas; el frontend debe ocultarlas según [`docs/PERMISOS.md`](PERMISOS.md).
+8. `POST/PUT /quotes` ya no aceptan `total`; el servidor calcula `subtotal`, `discount`,
+   `tax` y `total`. Enviar `total` responde `400`.
+9. `Quote.status` pasó de texto libre a `DRAFT|SENT|APPROVED|REJECTED|EXPIRED|CANCELLED`.
+   Los valores históricos `pending`/`approved` se migraron a `DRAFT`/`APPROVED`.
+10. `GET /quotes` devuelve solo la última versión por defecto; usar
+    `includeSuperseded=true` para el historial. Existen `GET /quotes/:id` y
+    `GET /quotes/:id/versions`.
 
 El repo `med-clinical` no fue modificado en esta pasada; este documento es el handoff.

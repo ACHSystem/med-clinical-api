@@ -94,9 +94,14 @@ with it.
 - `JwtService` is re-provided in `auth.module.ts` and `providers.module.ts`. Import style
   is inconsistent (relative almost everywhere, `src/prisma/prisma.service` in
   `auth.module.ts`) because `tsconfig.baseUrl` is `./`. Prefer relative imports.
-- Single migration `prisma/migrations/20260506130027_init` covers all 11 models. There
-  has never been a second migration: any schema change needs `npx prisma migrate dev`
-  and the generated SQL committed.
+- The initial migration `prisma/migrations/20260506130027_init` covered the original
+  models; later migrations add clinics/templates, audits/signatures, dollar normalization
+  and quote versioning. Any schema change needs a new migration
+  (`npx prisma migrate dev --name ...`) and the generated SQL committed.
+- Quotes are versioned: `QuoteStatus` (`DRAFT|SENT|APPROVED|REJECTED|EXPIRED|CANCELLED`),
+  `version`, `rootQuoteId`, `supersedesId`, `supersededAt`, currency/tax snapshots and
+  server-computed totals. Only `DRAFT` is editable; issued versions are immutable and
+  `POST /quotes/:id/revise` creates the next version. See `docs/QUOTES_FRONTEND.md`.
 
 ## Auth, tenancy and response shapes
 

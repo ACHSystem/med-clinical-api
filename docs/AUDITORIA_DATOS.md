@@ -21,7 +21,8 @@
 
 - Pacientes: alta, edición y baja lógica.
 - Historias clínicas: alta, edición, baja lógica y firma.
-- Presupuestos: alta, edición y baja lógica.
+- Presupuestos: alta, edición de borrador, revisión (nueva versión), transiciones de
+  estado y baja lógica.
 - Proveedores y servicios: alta, edición y baja lógica.
 - Costos de servicio y tasa del dólar.
 - Métodos de pago.

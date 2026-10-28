@@ -21,6 +21,11 @@ export class ServicesCostsController {
     return detailResponse(await this.servicesCostsService.getCurrentDolar());
   }
 
+  @Get(':id')
+  async getOne(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
+    return detailResponse(await this.servicesCostsService.findOne(id, user.clinicId));
+  }
+
   @Roles(Role.DOCTOR)
   @Post('dolar')
   async saveDolar(@Body() dto: DolarDTO) {

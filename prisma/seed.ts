@@ -1,7 +1,9 @@
-import { PrismaClient, Prisma } from '../src/generated/prisma/client';
+import { PrismaClient, Prisma, QuoteStatus } from '../src/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcrypt';
 import 'dotenv/config';
+import { randomUUID } from 'crypto';
+import { calculateQuoteTotals } from '../src/quotes/quotes.calculator';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -564,14 +566,13 @@ async function main() {
 
   console.log(`✅ Medical histories: ${historyCount}`);
 
-  // Presupuestos de ejemplo. Quote.total lo calcula el cliente en produccion
-  // (el servidor no lo recalcula), aqui se suma para mantener consistencia con
-  // los items. dolarId referencia la tasa vigente al momento de emitir.
+  // Presupuestos de ejemplo. Los totales se calculan con la misma funcion de
+  // dominio que usa la API; dolarId referencia la tasa vigente al emitir.
   const quotesData = [
     {
       title: 'Presupuesto control de hipertensión - Ana García',
       description: 'Consultas de control y estudios de laboratorio del primer trimestre.',
-      status: 'pending',
+      status: QuoteStatus.DRAFT,
       validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       patientId: ana.id,
       items: [
@@ -583,7 +584,7 @@ async function main() {
     {
       title: 'Presupuesto dolor lumbar - Carlos López',
       description: 'Estudio de imagen y sesiones de fisioterapia.',
-      status: 'approved',
+      status: QuoteStatus.APPROVED,
       validUntil: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000),
       patientId: carlos.id,
       items: [
@@ -601,22 +602,35 @@ async function main() {
     if (existingQuote) {
       tally(false);
     } else {
-      const total = quote.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+      const totals = calculateQuoteTotals({ items: quote.items, discount: 0, tax: 0 });
+      const quoteId = randomUUID();
       await prisma.quote.create({
         data: {
+          id: quoteId,
           title: quote.title,
           description: quote.description,
           status: quote.status,
           validUntil: quote.validUntil,
-          total,
+          subtotal: totals.subtotal,
+          discount: totals.discount,
+          tax: totals.tax,
+          total: totals.total,
+          currency: 'USD',
+          exchangeRate: dolar.value,
+          version: 1,
+          rootQuoteId: quoteId,
           dolarId: dolar.id,
           patientId: quote.patientId,
           clinicId: clinic.id,
           createdById: doctor.id,
           items: {
-            create: quote.items.map(item => ({
-              ...item,
-              total: item.unitPrice * item.quantity,
+            create: totals.items.map((item, index) => ({
+              name: item.name,
+              description: item.description,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              total: item.total,
+              sortOrder: index,
             })),
           },
         },
