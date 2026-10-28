@@ -10,6 +10,9 @@ histories, custom intake forms, providers, service pricing, quotes).
 - **API reference: `docs/API.md`** — endpoint-by-endpoint contract for the frontend
   (payloads, response envelopes, form schemas, and the list of known defects). Update it
   whenever a route, DTO or response shape changes.
+- **Permissions: `docs/PERMISOS.md`** — DOCTOR/ASSISTANT matrix and frontend handoff.
+- **Operations: `docs/OPERACION.md`** — structured logs, request ID and metrics.
+- **Data audit: `docs/AUDITORIA_DATOS.md`** — `AuditLog`, actions and sanitization.
 - **Security audit: `docs/AUDITORIA.md`** — findings, the phases that were fixed, and
   what is still open.
 - `preview/app.js` is a standalone static HTML/JS UI mock (mock data at the top of the
@@ -32,12 +35,10 @@ call the tools directly: `npx nest start`, `npx prisma migrate dev`, `npx jest`.
 - `pnpm build` (`nest build`, deletes `dist/`). `pnpm format` (prettier over `src`+`test`).
 - Typecheck: `npx tsc -p tsconfig.json --noEmit --incremental false` (there is no script
   for it, and `--incremental` must be disabled or it writes a `.tsbuildinfo`).
-- **`pnpm start:prod` is broken**: `tsconfig.build.json` sets no `include`/`rootDir`, so
-  the root-level `prisma.config.ts` becomes the rootDir and the build emits
-  `dist/src/main.js`, not `dist/main`. Run `node dist/src/main`.
+- `pnpm start:prod` runs `node dist/main.js`; `nest build` currently emits `dist/main.js`.
 - Prisma (use `npx prisma`): `generate`, `migrate dev`, `migrate deploy`, `studio`.
-- `pnpm test` — **no `*.spec.ts` exists anywhere** (62 files checked, 0 matches), so it
-  exits 1 with "No tests found". `pnpm test:e2e` only runs the stock Nest
+- `pnpm test` — runs focused unit specs (`roles.guard`, `exception.filter`,
+  `services-costs.service`, `audit.service`). `pnpm test:e2e` only runs the stock Nest
   `test/app.e2e-spec.ts`, which was never executed. There are no test fixtures or
   in-memory-DB harness; the app talks to a real PostgreSQL.
 - `pnpm lint` — **broken**: `eslint.config.mjs` uses CommonJS `module.exports` plus the
@@ -45,10 +46,10 @@ call the tools directly: `npx nest start`, `npx prisma migrate dev`, `npx jest`.
   `ReferenceError: module is not defined in ES module scope`. It also runs with `--fix`.
   `eslint-plugin-prettier` is wired through that config, so once fixed, prettier
   violations become lint errors.
-- `pnpm prisma:seed` — runs, but **assumes the schema is already migrated**
-  (`npx prisma migrate deploy` first; otherwise `TableDoesNotExist`). It is **not
-  idempotent**: only `User` is `upsert`ed, every other insert is `create`, so a second
-  run duplicates 10 patients, 15 providers, 75 provider services and 8 service costs.
+- `pnpm prisma:seed` — **assumes the schema is already migrated** (`npx prisma migrate
+  deploy` first). It is **idempotent**: every insert is guarded by `findFirst`/`upsert`,
+  so a second run creates 0 rows. It always ensures the initial `DOCTOR` and the demo
+  clinic exist.
 ## Environment
 
 `.env` is gitignored; `.env.example` documents every key. `ConfigModule.forRoot` reads
@@ -64,6 +65,8 @@ fails at boot instead of becoming a runtime 500.
 | `DATABASE_POOL_MAX` | no | Default 10. Multiply by the number of server processes before raising it. |
 | `DATABASE_POOL_CONNECT_TIMEOUT_MS` | no | Default 5000. |
 | `DATABASE_POOL_IDLE_TIMEOUT_MS` | no | Default 30000. |
+| `LOG_LEVEL` | no | `trace`/`debug`/`info`/`warn`/`error`/`fatal`. Default `info`. |
+| `METRICS_TOKEN` | no | If absent, `GET /api/metrics` returns 404. Min. 16 chars. |
 
 The frontend (`med-clinical`, Angular) serves on port 4200 — keep `CORS_ORIGINS` in sync
 with it.
@@ -109,37 +112,38 @@ with it.
   used to put the raw payload on the request, which made `user.userId` `undefined` in
   every controller and silently turned all tenant filters into no-ops. `@CurrentUser() user.userId`
   is the only supported way to read the caller's id.
-- Public routes are listed literally in `routesIgnores`: only `/api/auth/login`.
-  `/api/auth/register` therefore **requires an existing valid token** (the first `DOCTOR`
+- Public routes are listed literally in `routesIgnores`: `/api/auth/login` and
+  `/api/metrics`. `/api/auth/register` **requires a DOCTOR token** (the first `DOCTOR`
   comes from the seed) and creates `ASSISTANT` users.
+- `RolesGuard` is registered after `AuthGuard`; it reads `request.user.role` (the
+  membership role) and enforces `@Roles(Role.DOCTOR)` on sensitive endpoints.
 - Rate limiting: `ThrottlerModule` defines a **single** throttler named `short`
   (100/min). Login and register override it with `@Throttle({ short: { limit: 5 } })` and
-  `GET /services-costs/dolar/save` with `limit: 1`. Declaring extra *named* throttlers is
+  `POST /services-costs/dolar/save` with `limit: 1`. Declaring extra *named* throttlers is
   a trap: `ThrottlerGuard` runs every configured throttler on every route, so a strict
   `auth` throttler silently caps the whole API at 5 requests/minute. The storage is
   in-memory, so limits reset on restart and are not shared between instances.
 - `main.ts` applies Helmet, a strict `CORS_ORIGINS` allow-list (no `*`), `trust proxy`
   for correct client IPs behind a reverse proxy, and `enableShutdownHooks()`.
-- Scoping rule: `patients`, `medical-histories` and `quotes` filter by `userId` (one
-  clinic per `User`) on **reads and writes** — the creates re-check that the referenced
-  patient belongs to the caller. `providers`, `customize`, `services-costs`,
-  `payment-info` and the dolar rate are intentionally **global** (no `userId` column) —
-  don't add a filter there by mistake, and don't forget one where it belongs.
-- Response envelopes are inconsistent: CRUD returns `{ status, message, data }`; `auth`
-  and the `/dolar` endpoints return `{ success, message, data }`; list endpoints return
-  a bare array. `src/common/api-response.ts` and `src/common/base.dto.ts` define helpers
-  that no service actually uses. For new endpoints follow the dominant
-  `{ status, message, data }`.
-- Deletes are soft (`isActive: false`) everywhere **except** `medical-histories`, which
-  hard-deletes. Lists filter `isActive: true`; `update` in `patients`/`quotes` does not.
+- Scoping rule: `patients`, `medical-histories`, `quotes`, `providers`, `customize`,
+  `services-costs` and `payment-info` filter by `clinicId` on reads and writes. The
+  creates re-check that the referenced patient/provider belongs to the clinic. `Dolar` is
+  intentionally global.
+- Response contract (enforced by review): writes `{ status, message, data }`; detail GETs
+  `{ data }`; list GETs `{ data, pagination }`; errors
+  `{ status: false, message, code, requestId }`. Use `src/common/api-response.ts`
+  (`writeResponse`, `detailResponse`) and `toPaginatedResult`; do not reintroduce
+  `success` or bare objects. `src/common/base.dto.ts` was removed.
+- Deletes are soft (`isActive: false` for patients/providers/costs/payments/quotes,
+  `deleted: true` for medical histories). Lists filter the soft-delete flag.
 
 ## Conventions
 
 - Global prefix `/api`. Global `ValidationPipe` with `whitelist` **and**
   `forbidNonWhitelisted`: any request field not declared in the DTO returns HTTP 400
   `Errores de validación: ...`. Adding a client field means adding the DTO property
-  first. (`UpdatePatientDto` is missing `lastName` and `identify`, so those cannot be
-  changed through the API.)
+  first. `PUT /patients/:id` reuses `PatientDto`, so `lastName` and `identify` are
+  accepted; it does not accept `isActive`.
 - DTOs: class-validator with definite-assignment (`name!: string`), `@IsOptional()` for
   nullable fields, `@Type(() => X)` + `@ValidateNested({ each: true })` for nested
   objects. Services convert date strings explicitly (`new Date(dto.birthDate)`).
@@ -151,11 +155,10 @@ with it.
 - `createdAt`/`updatedAt` are DB defaults (`@default(now())` / `@updatedAt`); never set
   them by hand.
 - Exceptions: throw Nest HTTP exceptions (`NotFoundException`, etc.) — the global
-  `AllExceptionsFilter` turns anything else into a 500 `{ status: false, message }`.
-  Messages are Spanish.
+  `AllExceptionsFilter` turns anything else into a 500
+  `{ status: false, message, code, requestId }`. Messages are Spanish.
 - Commits: Conventional Commits, single-line English subject
   (`feat: add JWT authentication and update services for dollar exchange rate`).
-- **Route-ordering trap, verified**: in `customize.controller.ts`, `@Put(':id')` is
-  declared before `@Put('reorder')`, so `PUT /api/customize/reorder` is captured by
-  `:id` and the reorder handler never runs (confirmed: the request reaches
-  `customField.findUnique`). Declare literal paths before `:param` routes.
+- **Route-ordering rule**: declare literal paths before `:param` routes. The previous
+  `customize` trap (`@Put(':id')` before `@Put('reorder')`) was fixed by moving
+  `@Put('reorder')` above `@Put(':id')`.

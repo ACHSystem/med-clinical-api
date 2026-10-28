@@ -77,6 +77,12 @@ Se construyó una **API REST multi-tenant** que modela el negocio real:
 - **Endurecimiento de seguridad.** Firma JWT verificada, guards globales, rate limiting,
   CORS por allow-list, validación de entorno al arranque, un único pool de conexiones y
   cierre ordenado (ver `docs/AUDITORIA.md`).
+- **Permisos por membresía.** `RolesGuard` aplica la matriz DOCTOR/ASSISTANT en endpoints
+  sensibles (ver `docs/PERMISOS.md`).
+- **Auditoría y firma.** `AuditLog` registra altas, ediciones, bajas y firmas; las historias
+  guardan `signedAt`/`signedById` (ver `docs/AUDITORIA_DATOS.md`).
+- **Observabilidad.** Logs JSON con `pino`, request ID y métricas Prometheus en
+  `/api/metrics` (ver `docs/OPERACION.md`).
 
 ## 3. Tecnologías utilizadas
 
@@ -95,7 +101,7 @@ Se construyó una **API REST multi-tenant** que modela el negocio real:
 | HTTP saliente | **axios** | Cotización del dólar (`ve.dolarapi.com`). |
 | Gestor de paquetes | **pnpm** | `pnpm-lock.yaml` + workspace. |
 | Contenedores | **Docker** (multi-stage) | Build y runtime reproducibles. |
-| Pruebas | **Jest** / supertest | Configurados (aún sin suites). |
+| Pruebas | **Jest** / supertest | 4 suites unitarias focalizadas (guards, filtro, dólar y auditoría). |
 
 ## 4. Arquitectura
 
@@ -137,15 +143,19 @@ User (identidad)  ──< ClinicUser >──  Clinic (tenant)
 
 ### 4.3 Flujo de una petición
 
-1. `ThrottlerGuard` (global) limita por IP.
-2. `AuthGuard` (global) verifica la firma HS256, exige `clinicId`, y **revalida la
+1. `requestContextMiddleware` asigna/propaga `requestId` y datos de la petición.
+2. `ThrottlerGuard` (global) limita por IP.
+3. `AuthGuard` (global) verifica la firma HS256, exige `clinicId`, y **revalida la
    membresía** contra la base de datos; inyecta `user` (`userId`, `clinicId`, `role`).
-3. `ValidationPipe` global (con `whitelist` y `forbidNonWhitelisted`) valida el DTO.
-4. El servicio aplica el filtro por `clinicId` y habla con Prisma.
-5. `AllExceptionsFilter` normaliza los errores a `{ status: false, message }`.
+4. `RolesGuard` (global) aplica `@Roles(...)` cuando el endpoint lo declara.
+5. `ValidationPipe` global (con `whitelist` y `forbidNonWhitelisted`) valida el DTO.
+6. El servicio aplica el filtro por `clinicId`, escribe auditoría y habla con Prisma.
+7. `AllExceptionsFilter` normaliza los errores a
+   `{ status: false, message, code, requestId }`.
 
-> La única ruta pública es `POST /api/auth/login`. `/auth/register` exige token (un doctor
-> da de alta asistentes); el primer `DOCTOR` viene del seed.
+> Las rutas sin JWT son `POST /api/auth/login` y `GET /api/metrics` (esta última exige
+> `x-metrics-token`). `/auth/register` exige un token DOCTOR; el primer `DOCTOR` viene del
+> seed.
 
 ## 5. Estrategias utilizadas
 
@@ -175,14 +185,16 @@ registrado.
 - **F-07/F-08** credenciales fuera del código; **F-09** validación de entorno con Joi;
   **F-10** cierre ordenado; **F-12** guard registrado una sola vez; **F-13** error de login
   uniforme para no enumerar cuentas.
+- **Autorización por rol** con `RolesGuard`; **auditoría** de datos clínicos/comerciales;
+  **logs estructurados** con request ID y **métricas** de latencia/errores.
 
 ### 5.5 Persistencia y calidad de datos
 - Borrado lógico donde aplica (`deleted`/`isActive`); las listas excluyen lo borrado.
 - Paginación y filtros (`page`, `limit`, `search`, fechas) en los listados.
 - `createdAt`/`updatedAt` gestionados por la base de datos.
 - Migraciones versionadas (`prisma/migrations`); **seed idempotente** que no duplica datos.
-- Respuestas con envoltura dominante `{ status, message, data }`; las listas devuelven
-  `{ data, meta }`.
+- Contrato único de respuestas: escrituras `{ status, message, data }`, detalles `{ data }`,
+  listas `{ data, pagination }` y errores `{ status:false, message, code, requestId }`.
 
 ## 6. Modelo de datos (resumen)
 
@@ -200,18 +212,19 @@ registrado.
 | `Provider` / `ProviderService` | Proveedores externos y su catálogo de servicios. |
 | `ServiceCost` | Lista de precios propia del consultorio. |
 | `PaymentMethod` | Datos bancarios para pago. |
-| `Dolar` | Histórico global de la tasa USD (append-only). |
+| `Dolar` | Histórico global de la tasa USD (una fila por día calendario UTC + valor). |
 | `Quote` / `QuoteItem` | Presupuesto y sus líneas, con snapshot del dólar. |
+| `AuditLog` | Registro inmutable de quién creó, editó, borró o firmó datos clínicos/comerciales. |
 
 ## 7. Endpoints principales
 
 Prefijo global `/api`; todas las rutas requieren `Authorization: Bearer <token>` salvo
-`POST /api/auth/login`.
+`POST /api/auth/login` y `GET /api/metrics` (con `x-metrics-token`).
 
 | Método | Ruta | Descripción |
 | --- | --- | --- |
 | `POST` | `/auth/login` | Login (por `username`). Público. |
-| `POST` | `/auth/register` | Alta de asistente (requiere token). |
+| `POST` | `/auth/register` | Alta de asistente (requiere token DOCTOR). |
 | `GET` | `/auth/profile` | Usuario y consultorio activo. |
 | `GET` | `/auth/clinics` | Consultorios del usuario. |
 | `POST` | `/auth/switch-clinic` | Cambia el consultorio activo y emite token nuevo. |
@@ -223,8 +236,12 @@ Prefijo global `/api`; todas las rutas requieren `Authorization: Bearer <token>`
 | `GET/POST/PUT/DELETE` | `/quotes` | Presupuestos. |
 | `GET/POST/PUT/DELETE` | `/providers` | Proveedores y sus servicios. |
 | `GET/POST/PUT/DELETE` | `/services-costs` | Lista de precios. |
-| `GET` | `/services-costs/dolar`, `/services-costs/dolar/save` | Última tasa y captura de una nueva. |
+| `GET` | `/services-costs/dolar` | Última tasa (404 si no hay). |
+| `POST` | `/services-costs/dolar` | Guardar una tasa manual. |
+| `POST` | `/services-costs/dolar/save` | Captura automática (1/min). |
 | `GET/POST/PUT/DELETE` | `/payment-info` | Métodos de pago. |
+| `GET` | `/audit-logs` | Auditoría (solo DOCTOR). |
+| `GET` | `/metrics` | Métricas Prometheus (`x-metrics-token`). |
 
 El contrato detallado (payloads, envolturas, tipos y defectos conocidos) está en
 [`docs/API.md`](docs/API.md).
@@ -251,6 +268,10 @@ pnpm dev
 Credenciales del seed (solo desarrollo): usuario `admin`, contraseña `admin`
 (doctora `doctor@medclinical.com`, asistente `assistant@medclinical.com`).
 
+El seed es **idempotente**: se puede ejecutar varias veces sin duplicar pacientes,
+proveedores, servicios, costos, historias, presupuestos ni tasas del dólar. Siempre
+crea/actualiza el `DOCTOR` inicial y la clínica demo `Consultorio Principal`.
+
 ### Docker
 
 ```bash
@@ -270,7 +291,8 @@ docker run --env-file .env -p 3008:3008 med-clinical-api
 | `pnpm format` | Prettier sobre `src` y `test`. |
 
 Variables de entorno (validadas con Joi al arrancar): `DATABASE_URL`, `JWT_SECRET`
-(mín. 32 caracteres), `CORS_ORIGINS`, `PORT` y los `DATABASE_POOL_*`.
+(mín. 32 caracteres), `CORS_ORIGINS`, `PORT`, los `DATABASE_POOL_*`, `LOG_LEVEL` y
+`METRICS_TOKEN` (opcional; sin ella `/api/metrics` responde 404).
 
 ## 9. Estado y trabajo pendiente
 
@@ -280,12 +302,10 @@ plantillas de formulario, citas, tratamientos/medicación y snapshot del dólar.
 Pendiente / abierto:
 
 - **Credencial en el historial de git** (`docs/AUDITORIA.md` O-01): rotar la contraseña.
-- **Sin pruebas automatizadas** (O-02): no hay red de seguridad ante regresiones.
-- **Autorización por rol** (`DOCTOR`/`ASSISTANT` se comportan igual hoy).
-- Algunas rutas de `update`/`delete` de `providers`, `services-costs` y `payment-info`
-  aún no filtran por consultorio.
+- **Frontend**: ocultar acciones por rol en `med-clinical` según `docs/PERMISOS.md`.
 - `Quote.status` es texto libre sin reglas de transición; no hay PDF/descarga de presupuestos.
 - `Provider`/`ProviderService` aún no se enlazan a `Quote`/`MedicalHistory`.
+- La purga/retención de `AuditLog` es una decisión operativa pendiente.
 
 Los requisitos de producto y las brechas están en
 [`docs/ESPECIFICACIONES.md`](docs/ESPECIFICACIONES.md); los hallazgos de seguridad, en
@@ -296,6 +316,9 @@ Los requisitos de producto y las brechas están en
 | Documento | Contenido |
 | --- | --- |
 | [`docs/API.md`](docs/API.md) | Contrato endpoint por endpoint para el frontend. |
+| [`docs/PERMISOS.md`](docs/PERMISOS.md) | Matriz de permisos DOCTOR/ASSISTANT y handoff de UI. |
+| [`docs/OPERACION.md`](docs/OPERACION.md) | Logs, request ID, métricas y alertas. |
+| [`docs/AUDITORIA_DATOS.md`](docs/AUDITORIA_DATOS.md) | Tabla de auditoría, acciones y sanitización. |
 | [`docs/ESPECIFICACIONES.md`](docs/ESPECIFICACIONES.md) | Especificación de producto: qué existe y qué falta. |
 | [`docs/AUDITORIA.md`](docs/AUDITORIA.md) | Auditoría de seguridad y hallazgos. |
 | [`AGENTS.md`](AGENTS.md) | Guía de ingeniería: comandos y convenciones. |

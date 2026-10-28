@@ -3,6 +3,10 @@ import { AuthService } from './auth.service';
 import { RegisterDto, LoginDto, SwitchClinicDto } from './auth.dto';
 import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
 import { Throttle } from '@nestjs/throttler';
+import { detailResponse } from '../common/api-response';
+import { toPaginatedResult } from '../common/pagination';
+import { Roles } from './roles.decorator';
+import { Role } from '../generated/prisma/client';
 
 @Controller('auth')
 export class AuthController {
@@ -16,15 +20,17 @@ export class AuthController {
   }
 
   @Throttle({ short: { limit: 5, ttl: 60_000 } })
+  @Roles(Role.DOCTOR)
   @Post('register')
-  async register(@Body() register: RegisterDto) {
-    return await this.authService.register(register);
+  async register(@Body() register: RegisterDto, @CurrentUser() user: CurrentUserData) {
+    return await this.authService.register(register, user.userId, user.clinicId);
   }
 
   /** Consultorios a los que pertenece el usuario, para el selector del frontend. */
   @Get('clinics')
   async getClinics(@CurrentUser() user: CurrentUserData) {
-    return await this.authService.getClinics(user.userId);
+    const clinics = await this.authService.getClinics(user.userId);
+    return toPaginatedResult(clinics, clinics.length, 1, Math.max(clinics.length, 1));
   }
 
   /**
@@ -38,6 +44,6 @@ export class AuthController {
 
   @Get('profile')
   async getProfile(@CurrentUser() user: CurrentUserData) {
-    return await this.authService.getProfile(user.userId, user.clinicId);
+    return detailResponse(await this.authService.getProfile(user.userId, user.clinicId));
   }
 }

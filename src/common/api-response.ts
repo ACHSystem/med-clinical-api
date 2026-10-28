@@ -1,32 +1,17 @@
-import { Injectable } from '@nestjs/common';
+export interface WriteResponse<T> {
+  status: true;
+  message: string;
+  data: T;
+}
 
-@Injectable()
-export class ApiResponse<T> {
-  static success<T>(message: string, data?: T): { status: boolean; message: string; data?: T } {
-    return {
-      status: true,
-      message,
-      data,
-    };
-  }
+export interface DetailResponse<T> {
+  data: T;
+}
 
-  static error(message: string): { status: boolean; message: string; data: null } {
-    return {
-      status: false,
-      message,
-      data: null,
-    };
-  }
+export function writeResponse<T>(message: string, data: T): WriteResponse<T> {
+  return { status: true, message, data };
+}
 
-  static notFound(message: string = 'Elemento no encontrado'): { status: boolean; message: string; data: null } {
-    return this.error(message);
-  }
-
-  static unauthorized(message: string = 'No autorizado'): { status: boolean; message: string; data: null } {
-    return this.error(message);
-  }
-
-  static badRequest(message: string): { status: boolean; message: string; data: null } {
-    return this.error(message);
-  }
+export function detailResponse<T>(data: T): DetailResponse<T> {
+  return { data };
 }

@@ -2,12 +2,16 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { BadRequestException, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AllExceptionsFilter } from './filters/exception.filter';
 import helmet from 'helmet';
+import { PinoLoggerService } from './common/observability/pino-logger.service';
+import { requestContextMiddleware } from './common/observability/request-context';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const config = app.get(ConfigService);
+
+  app.use(requestContextMiddleware);
+  app.useLogger(app.get(PinoLoggerService));
 
   // El body lo limita el parser de Nest a 100kb por defecto
   app.use(helmet());
@@ -26,8 +30,8 @@ async function bootstrap() {
     maxAge: 600,
   });
 
-  // AuthGuard y ThrottlerGuard se registran como APP_GUARD en AppModule
-  app.useGlobalFilters(new AllExceptionsFilter());
+  // AuthGuard, RolesGuard y ThrottlerGuard se registran como APP_GUARD en AppModule.
+  // AllExceptionsFilter se registra por DI en ObservabilityModule.
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true,
     forbidNonWhitelisted: true,

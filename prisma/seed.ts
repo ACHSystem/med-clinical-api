@@ -96,8 +96,8 @@ async function main() {
     { name: 'Roberto', lastName: 'Sánchez', identify: 'V-01234567', email: 'roberto.sanchez@email.com', phone: '+581234567899', birthDate: new Date('1973-08-14'), gender: 'Masculino', address: 'Avenida Sur 741, Ciudad' },
   ];
 
-  // Patient.identify NO es unico en el schema (solo hay indice), asi que la guarda
-  // de idempotencia es findFirst por clinicId + identify, no upsert.
+  // Patient tiene @@unique([clinicId, identify]) (y identify unico global), asi que
+  // la guarda de idempotencia es findFirst por clinicId + identify.
   const patients: ((typeof patientsData)[number] & { id: string })[] = [];
   let patientsCreated = 0;
   for (const patient of patientsData) {
@@ -159,7 +159,7 @@ async function main() {
   const beforeProviders = created;
   let serviceCount = 0;
   for (let i = 0; i < providersData.length; i++) {
-    // Provider.identify tampoco es unico: guarda por clinicId + identify.
+    // Provider.identify es unico global: guarda por clinicId + identify para no duplicar.
     let provider = await prisma.provider.findFirst({
       where: { clinicId: clinic.id, identify: providersData[i].identify },
     });
@@ -277,8 +277,14 @@ async function main() {
   // GET /services-costs/dolar/save.
   let dolar = await prisma.dolar.findFirst({ orderBy: { date: 'desc' } });
   if (!dolar) {
+    const today = new Date();
+    const rateDate = new Date(Date.UTC(
+      today.getUTCFullYear(),
+      today.getUTCMonth(),
+      today.getUTCDate(),
+    ));
     dolar = await prisma.dolar.create({
-      data: { value: 36.5, date: new Date() },
+      data: { value: 36.5, date: rateDate },
     });
     tally(true);
     console.log(`✅ Created dolar rate ${dolar.value}`);
@@ -331,9 +337,17 @@ async function main() {
     })),
   };
 
-  const ana = patients.find(p => p.identify === 'ANA001')!;
-  const carlos = patients.find(p => p.identify === 'CAR002')!;
-  const maria = patients.find(p => p.identify === 'MAR003')!;
+  const findSeededPatient = (identify: string) => {
+    const patient = patients.find(p => p.identify === identify);
+    if (!patient) {
+      throw new Error(`No se encontró el paciente sembrado con identificación ${identify}.`);
+    }
+    return patient;
+  };
+
+  const ana = findSeededPatient('V-12345678');
+  const carlos = findSeededPatient('V-23456789');
+  const maria = findSeededPatient('V-34567890');
 
   const medicationsData = [
     { name: 'Losartán', activeIngredient: 'Losartán potásico', presentation: 'Tableta', concentration: '50 mg', form: 'VO' },

@@ -2,6 +2,7 @@ import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { RequestContextService } from '../common/observability/request-context';
 
 export interface ITokenPayload {
     sub: string;
@@ -16,6 +17,7 @@ export interface ITokenPayload {
 
 const routesIgnores = [
     '/api/auth/login',
+    '/api/metrics',
 ];
 
 @Injectable()
@@ -25,6 +27,7 @@ export class AuthGuard implements CanActivate {
         private jwtService: JwtService,
         private configService: ConfigService,
         private readonly prisma: PrismaService,
+        private readonly requestContext: RequestContextService,
     ) { }
 
     async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -92,6 +95,13 @@ export class AuthGuard implements CanActivate {
             role: membership.role,
             clinicId: payload.clinicId,
         };
+
+        this.requestContext.setUser({
+            userId: payload.sub,
+            clinicId: payload.clinicId,
+            role: membership.role,
+        });
+
         return true;
     }
 }

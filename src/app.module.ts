@@ -15,6 +15,9 @@ import { JwtService } from '@nestjs/jwt';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { AuthGuard } from './auth/auth.guard';
+import { RolesGuard } from './auth/roles.guard';
+import { ObservabilityModule } from './common/observability/observability.module';
+import { AuditModule } from './audit/audit.module';
 import * as Joi from 'joi';
 
 @Module({
@@ -31,6 +34,8 @@ import * as Joi from 'joi';
         DATABASE_POOL_CONNECT_TIMEOUT_MS: Joi.number().integer().min(1000).default(5000),
         DATABASE_POOL_IDLE_TIMEOUT_MS: Joi.number().integer().min(1000).default(30000),
         NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
+        LOG_LEVEL: Joi.string().valid('trace', 'debug', 'info', 'warn', 'error', 'fatal').default('info'),
+        METRICS_TOKEN: Joi.string().min(16).allow('').optional(),
       }),
     }),
     // Un unico limitador global; las rutas criticas lo sobrescriben con @Throttle.
@@ -39,6 +44,8 @@ import * as Joi from 'joi';
       { name: 'short', ttl: 60_000, limit: 100 },
     ]),
     PrismaModule,
+    ObservabilityModule,
+    AuditModule,
     AuthModule,
     ProvidersModule,
     PatientsModule,
@@ -52,9 +59,10 @@ import * as Joi from 'joi';
   providers: [
     AppService,
     JwtService,
-    // El orden importa: primero limita el trafico, despues valida la sesion
+    // El orden importa: primero limita el trafico, despues valida la sesion y el rol
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: AuthGuard },
+    { provide: APP_GUARD, useClass: RolesGuard },
   ],
 })
 export class AppModule { }

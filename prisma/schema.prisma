@@ -13,6 +13,13 @@ enum Role {
   ASSISTANT
 }
 
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  SIGN
+}
+
 // Identidad de la persona. NO es el tenant: un mismo User puede trabajar en varias Clinicas.
 model User {
   id        String   @id @default(uuid())
@@ -28,8 +35,10 @@ model User {
 
   memberships      ClinicUser[]
   createdHistories MedicalHistory[] @relation("HistoryAuthor")
+  signedHistories  MedicalHistory[] @relation("HistorySigner")
   createdQuotes    Quote[]          @relation("QuoteAuthor")
   appointments     Appointment[]
+  auditLogs        AuditLog[]
 }
 
 // Tenant: el consultorio. Todos los datos de negocio cuelgan de aqui, no del User.
@@ -56,6 +65,7 @@ model Clinic {
   appointments        Appointment[]
   medications         Medication[]
   medicalTreatments   MedicalTreatments[]
+  auditLogs           AuditLog[]
 
   @@unique([slug])
   @@index([isActive])
@@ -240,8 +250,13 @@ model MedicalHistory {
   createdById      String
   createdBy        User     @relation("HistoryAuthor", fields: [createdById], references: [id])
 
+  signedAt   DateTime?
+  signedById String?
+  signedBy   User?     @relation("HistorySigner", fields: [signedById], references: [id], onDelete: SetNull)
+
   @@index([clinicId, patientId, createdAt, type, status])
   @@index([createdById])
+  @@index([signedById])
 }
 
 model MedicalTreatments {
@@ -400,6 +415,30 @@ model Dolar {
   updatedAt DateTime @updatedAt
 
   quotes Quote[]
+
+  @@unique([date, value])
+  @@index([date])
+}
+
+// Registro inmutable de quien creo, modifico, firmo o borro datos clinicos y comerciales.
+// metadata solo guarda nombres de campos/estados, nunca contenido clinico ni datos personales.
+model AuditLog {
+  id        String      @id @default(uuid())
+  clinicId  String?
+  clinic    Clinic?     @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+  userId    String?
+  user      User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  entity    String
+  entityId  String
+  action    AuditAction
+  metadata  Json?
+  ipAddress String?
+  requestId String?
+  createdAt DateTime    @default(now())
+
+  @@index([clinicId, createdAt])
+  @@index([entity, entityId])
+  @@index([userId, createdAt])
 }
 
 // Metodos de pago
