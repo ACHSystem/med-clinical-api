@@ -127,7 +127,7 @@ non-empty, no `*`) and the pool settings (optional, positive integers, with defa
 | O-03 | Medium | No index except `User_email_key` | Every FK lookup and every list endpoint is a sequential scan |
 | O-04 | Medium | All 7 FKs are `ON DELETE RESTRICT` | Deleting a user or provider with data fails with a raw FK error |
 | O-05 | Medium | No pagination on any list endpoint | Full table returned and fully materialised in memory |
-| O-06 | Low | `Patient.identify` is not unique | Duplicate identification numbers allowed |
+| O-06 | Low | Identification was globally unique instead of per clinic | Now `@@unique([clinicId, identify])` on `Patient` and `Provider`; the same identify can exist in different clinics |
 | O-07 | Low | Dead Passport strategy still registered | Two sources of truth for auth; a maintenance trap |
 
 ### O-03 — Missing indexes (schema, not implemented)

@@ -135,15 +135,19 @@ with it.
   (`writeResponse`, `detailResponse`) and `toPaginatedResult`; do not reintroduce
   `success` or bare objects. `src/common/base.dto.ts` was removed.
 - Deletes are soft (`isActive: false` for patients/providers/costs/payments/quotes,
-  `deleted: true` for medical histories). Lists filter the soft-delete flag.
+  `deleted: true` for medical histories). Lists filter the soft-delete flag. `GET` by id
+  hides inactive/deleted records by default; `PUT`/`DELETE` on an already inactive/deleted
+  record returns `404`. Patients can be reactivated with `PUT {isActive:true}`; quotes can
+  be reactivated the same way.
 
 ## Conventions
 
 - Global prefix `/api`. Global `ValidationPipe` with `whitelist` **and**
   `forbidNonWhitelisted`: any request field not declared in the DTO returns HTTP 400
   `Errores de validación: ...`. Adding a client field means adding the DTO property
-  first. `PUT /patients/:id` reuses `PatientDto`, so `lastName` and `identify` are
-  accepted; it does not accept `isActive`.
+  first. `PUT /patients/:id` uses `UpdatePatientDto` (partial) and accepts `isActive:true`
+  to reactivate. `Patient.identify` and `Provider.identify` are unique per clinic, not
+  globally.
 - DTOs: class-validator with definite-assignment (`name!: string`), `@IsOptional()` for
   nullable fields, `@Type(() => X)` + `@ValidateNested({ each: true })` for nested
   objects. Services convert date strings explicitly (`new Date(dto.birthDate)`).

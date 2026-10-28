@@ -45,7 +45,7 @@ Registered once, then referenced by every history and quote.
 | Spec requirement | Column | Notes |
 | --- | --- | --- |
 | Nombre completo | `name`, `lastName` | Split, not a single full name. |
-| Cédula | `identify` | Free text; `V`/`E` prefixes and dashes are accepted and stored as typed. |
+| Cédula | `identify` | Free text; unique **per clinic** (`@@unique([clinicId, identify])`), not globally. |
 | Teléfono | `phone` | Free text, no format validation. |
 | Correo | `email` | Optional, validated as an email on create. |
 | Edad | `birthDate` | Stored as a date; **age is never stored or returned**, it must be derived. |
@@ -94,7 +94,7 @@ token when created. The current model does not store which clinic member created
 | Cargo | `Provider.type` (e.g. `Laboratorio`, `Cardiología`) |
 | Empresa | `Provider.businessName` |
 | Teléfono | `Provider.phone` (optional) |
-| Cédula o RIF | `Provider.identify` |
+| Cédula o RIF | `Provider.identify` (unique per clinic) |
 | — | `Provider.email`, `address`, `description` (all optional) |
 
 `ProviderService` is the catalogue of what that provider offers: `name`,
@@ -224,14 +224,14 @@ is limited to `CORS_ORIGINS`. Rate limits: 100/min per IP overall, 5/min on
 | Method | Path | Notes |
 | --- | --- | --- |
 | `POST` | `/auth/login` | Public. Returns `{ status, message, data: { access_token, user } }`. |
-| `POST` | `/auth/register` | Requires a DOCTOR token; creates ASSISTANT users. |
+| `POST` | `/auth/register` | Requires a DOCTOR token for the target clinic; creates ASSISTANT users transactionally. Password: 8+ chars, letter and number. |
 | `GET` | `/auth/profile` | Scoped. |
 | `GET` | `/` | Nest hello-world stub. |
 | `GET` | `/patients` | Scoped, paginated; filters by text, gender, active status and creation dates. |
 | `GET` | `/patients/:id` | Scoped. |
 | `POST` | `/patients` | Scoped. |
-| `PUT` | `/patients/:id` | Scoped. `lastName`/`identify` are not updatable. |
-| `DELETE` | `/patients/:id` | Scoped soft delete. |
+| `PUT` | `/patients/:id` | Scoped, partial update; accepts `isActive:true` to reactivate. Duplicate identify → 409. |
+| `DELETE` | `/patients/:id` | Scoped soft delete; second delete → 404. |
 | `GET` | `/medical-histories/patient/:patientId` | Scoped, paginated; verifies patient and filters by text, type and creation dates. |
 | `GET` | `/medical-histories/:id` | Scoped. |
 | `POST` | `/medical-histories` | Scoped; rejects a `patientId` from another clinic and assigns author from token. |

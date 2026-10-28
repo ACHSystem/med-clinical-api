@@ -111,6 +111,10 @@ Base: `/api/auth`.
 - `POST /auth/register` crea siempre usuarios `ASSISTANT` y exige un DOCTOR autenticado.
   Si se envía `clinicId`, el DOCTOR debe ser miembro de ese consultorio; si se omite, se usa
   el consultorio activo del token.
+- La creación de `User` y `ClinicUser` es transaccional: si falla una, no queda la otra.
+- `email` y `username` son únicos; un duplicado responde `409 CONFLICT`.
+- Contraseña mínima: 8 caracteres, al menos una letra y un número.
+- El body no acepta `role`; el rol creado es siempre `ASSISTANT`.
 - El token caduca a los 7 días.
 - El rol efectivo es el de la membresía (`ClinicUser`), no el de la cuenta.
 
@@ -125,12 +129,21 @@ Base: `/api/patients`.
 | `GET` | `/patients` | Cualquiera | `{data,pagination}` |
 | `GET` | `/patients/autocomplete` | Cualquiera | `{data,pagination}` |
 | `GET` | `/patients/:id` | Cualquiera | `{data}` |
+| `GET` | `/patients/:id?includeInactive=true` | Cualquiera | `{data}` de un paciente inactivo |
 | `GET` | `/patients/:id/medical-histories` | Cualquiera | `{data,pagination}` |
 | `POST` | `/patients` | Cualquiera | `{status,message,data}` |
 | `PUT` | `/patients/:id` | Cualquiera | `{status,message,data}` |
 | `DELETE` | `/patients/:id` | DOCTOR | `{status,message,data}` con `isActive:false` |
 
-Filtros de listado: `search`, `gender`. El borrado es lógico.
+- Filtros de listado: `search`, `gender`, `isActive` (default `true`).
+- `GET /patients?isActive=false` lista inactivos.
+- `GET /patients/:id` responde `404` si el paciente está inactivo, salvo
+  `includeInactive=true`.
+- `PUT /patients/:id` es parcial: acepta cualquier subconjunto de campos.
+- `isActive` solo acepta `true`; sirve para reactivar sin pisar los demás campos.
+- La cédula es única **por clínica**. Duplicado en create o update → `409 CONFLICT`.
+- La misma cédula puede existir en dos clínicas distintas.
+- Un segundo `DELETE` responde `404`.
 
 ---
 
@@ -162,6 +175,15 @@ Base: `/api/medical-histories`.
 
 `MedicalHistory.data` sigue siendo JSON libre para las respuestas del formulario. `templateSnapshot` conserva la definición de la plantilla al momento del guardado.
 
+### 4.3 Historias borradas y plantilla
+
+- `GET /medical-histories/:id`, `PUT`, `DELETE` y `sign` responden `404` si la historia
+  tiene `deleted:true`.
+- Un segundo `DELETE` responde `404`.
+- `PUT /medical-histories/:id` acepta `templateId` como UUID opcional.
+- Si `templateId` no existe o pertenece a otra clínica → `404 Plantilla no encontrada`.
+- Crear una historia exige que el paciente esté activo.
+
 ---
 
 ## 5. Customize (plantillas y campos)
@@ -171,6 +193,7 @@ Base: `/api/customize`.
 | Método | Ruta | Rol | Respuesta |
 | --- | --- | --- | --- |
 | `GET` | `/customize` | Cualquiera | `{data,pagination}` |
+| `GET` | `/customize/templates/:id` | Cualquiera | `{data}` con solo campos activos |
 | `GET` | `/customize/fields` | Cualquiera | `{data,pagination}` |
 | `GET` | `/customize/fields/:id` | Cualquiera | `{data}` |
 | `GET` | `/customize/:id` (legacy) | Cualquiera | `{data}` |
@@ -187,6 +210,8 @@ Base: `/api/customize`.
 | `DELETE` | `/customize/:id` (legacy) | DOCTOR | `{status,message,data}` |
 
 `fieldType` es texto libre. `options` siempre es un array (`[]` si no aplica).
+`GET /customize` y `GET /customize/templates/:id` solo devuelven `CustomField` con
+`isActive:true`; los campos borrados no se renderizan en el formulario de consulta.
 
 ---
 
@@ -205,6 +230,9 @@ Base: `/api/providers`.
 | `DELETE` | `/providers/services/:serviceId` | DOCTOR | `{status,message,data}` |
 
 Todas las rutas filtran por el consultorio activo. `GET /providers` incluye `services`; el frontend debe filtrar `services.filter(s => s.isActive)`.
+La identificación (`identify`) es única por clínica; un duplicado en create/update responde
+`409 CONFLICT`. `PUT/DELETE /providers/:id` y `/providers/services/:serviceId` con un id de
+otra clínica responden `404`.
 
 ---
 
@@ -260,6 +288,11 @@ Base: `/api/quotes`.
 - `Quote.total` lo envía el cliente; el servidor no lo recalcula.
 - Cada `QuoteItem.total` lo calcula el servidor (`unitPrice × quantity`).
 - `dolarId` debe existir; un id inválido produce `500 INTERNAL_ERROR` (validar en el cliente).
+- `GET /quotes?isActive=false` lista presupuestos inactivos.
+- `PUT /quotes/:id` no opera sobre un presupuesto inactivo salvo `{isActive:true}`, que lo
+  reactiva explícitamente. `isActive:false` no se acepta por `PUT`.
+- `DELETE /quotes/:id` solo opera sobre activos; un segundo borrado responde `404`.
+- No se puede crear un presupuesto para un paciente inactivo.
 - No existe `GET /quotes/:id`.
 
 ---
@@ -275,8 +308,9 @@ Base: `/api/payment-info`.
 | `PUT` | `/payment-info/:id` | DOCTOR | `{status,message,data}` |
 | `DELETE` | `/payment-info/:id` | DOCTOR | `{status,message,data}` |
 
-Todas las rutas filtran por el consultorio activo. `phone`, `email` y `account` son
-opcionales en el DTO pero obligatorios en la base; enviar siempre los cinco campos.
+Todas las rutas filtran por el consultorio activo; `PUT/DELETE /payment-info/:id` con un id
+de otra clínica responde `404`. `phone`, `email` y `account` son opcionales en el DTO pero
+obligatorios en la base; enviar siempre los cinco campos.
 
 ---
 

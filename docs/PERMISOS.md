@@ -10,7 +10,7 @@ puede ser `DOCTOR` en un consultorio y `ASSISTANT` en otro.
 | Auth: login, perfil, consultorios, cambiar consultorio | Sí | Sí |
 | Auth: registrar usuarios | Sí | No |
 | Pacientes: leer | Sí | Sí |
-| Pacientes: crear / editar | Sí | Sí |
+| Pacientes: crear / editar / reactivar | Sí | Sí |
 | Pacientes: borrar | Sí | No |
 | Historias clínicas: leer | Sí | Sí |
 | Historias clínicas: crear / editar / borrar | Sí | No |
@@ -26,7 +26,7 @@ puede ser `DOCTOR` en un consultorio y `ASSISTANT` en otro.
 | Métodos de pago: leer | Sí | Sí |
 | Métodos de pago: crear / editar / borrar | Sí | No |
 | Presupuestos: leer | Sí | Sí |
-| Presupuestos: crear / editar | Sí | Sí |
+| Presupuestos: crear / editar / reactivar | Sí | Sí |
 | Presupuestos: borrar | Sí | No |
 | Auditoría: consultar | Sí | No |
 | Métricas: scrapear con `x-metrics-token` | Servicio externo | Servicio externo |

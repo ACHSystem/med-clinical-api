@@ -190,6 +190,11 @@ registrado.
 
 ### 5.5 Persistencia y calidad de datos
 - Borrado lógico donde aplica (`deleted`/`isActive`); las listas excluyen lo borrado.
+  Los pacientes y presupuestos se pueden reactivar con `PUT {isActive:true}`.
+- Cédula/identificación única **por clínica** para pacientes y proveedores; la misma
+  identificación puede existir en consultorios distintos.
+- `POST /auth/register` es transaccional, exige DOCTOR de la clínica destino, email único
+  y contraseña de 8+ caracteres con letra y número.
 - Paginación y filtros (`page`, `limit`, `search`, fechas) en los listados.
 - `createdAt`/`updatedAt` gestionados por la base de datos.
 - Migraciones versionadas (`prisma/migrations`); **seed idempotente** que no duplica datos.
