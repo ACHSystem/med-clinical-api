@@ -1,4 +1,4 @@
-import { IsBoolean, IsDateString, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, IsArray, ValidateNested } from 'class-validator';
+import { Equals, IsBoolean, IsDateString, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID, IsArray, ValidateNested } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { PaginationQueryDto } from '../common/pagination.dto';
 
@@ -96,6 +96,7 @@ export class UpdateQuoteDto {
   status?: string;
 
   @IsBoolean()
+  @Equals(true)
   @IsOptional()
   isActive?: boolean;
 }

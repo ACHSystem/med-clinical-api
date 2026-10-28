@@ -94,7 +94,7 @@ model Patient {
   id        String    @id @default(uuid())
   name      String
   lastName  String
-  identify  String    @unique
+  identify  String
   email     String?
   phone     String?
   birthDate DateTime?
@@ -358,7 +358,7 @@ model Provider {
   name         String
   type         String // "LAB" | "IMAGING" | "PHARMACY" | "EXTERNAL_DOCTOR" | "SUPPLIES" | "OTHER"
   businessName String
-  identify     String   @unique
+  identify     String
   email        String?
   phone        String?
   address      String?
@@ -372,6 +372,7 @@ model Provider {
 
   services ProviderService[]
 
+  @@unique([clinicId, identify])
   @@index([clinicId, isActive])
 }
 

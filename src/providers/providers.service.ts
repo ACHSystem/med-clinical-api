@@ -1,9 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { toPaginatedResult } from '../common/pagination';
 import { writeResponse } from '../common/api-response';
 import { AuditService } from '../audit/audit.service';
-import { AuditAction } from '../generated/prisma/client';
+import { AuditAction, Prisma } from '../generated/prisma/client';
 import { ProviderDto, ProviderListQueryDto, ProviderServiceDto } from './providers.dto';
 
 @Injectable()
@@ -55,40 +55,68 @@ export class ProvidersService {
   }
 
   async createProvider(providers: ProviderDto, clinicId: string) {
-    const provider = await this.prisma.$transaction(async (tx) => {
-      const created = await tx.provider.create({ data: { ...providers, clinicId } });
-
-      await this.auditService.record({
-        entity: 'Provider',
-        entityId: created.id,
-        action: AuditAction.CREATE,
-        metadata: { fields: Object.keys(providers) },
-        clinicId,
-      }, tx);
-
-      return created;
+    const existing = await this.prisma.provider.findFirst({
+      where: { clinicId, identify: providers.identify },
+      select: { id: true },
     });
 
-    return writeResponse('Proveedor agregado exitosamente', provider);
+    if (existing) {
+      throw new ConflictException('Ya existe un proveedor con esta identificación en la clínica');
+    }
+
+    try {
+      const provider = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.provider.create({ data: { ...providers, clinicId } });
+
+        await this.auditService.record({
+          entity: 'Provider',
+          entityId: created.id,
+          action: AuditAction.CREATE,
+          metadata: { fields: Object.keys(providers) },
+          clinicId,
+        }, tx);
+
+        return created;
+      });
+
+      return writeResponse('Proveedor agregado exitosamente', provider);
+    } catch (error) {
+      this.handleDuplicate(error);
+      throw error;
+    }
   }
 
   async updateProvider(id: string, dto: ProviderDto, clinicId: string) {
-    await this.findOne(id, clinicId);
-    const provider = await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.provider.update({ where: { id }, data: dto });
-
-      await this.auditService.record({
-        entity: 'Provider',
-        entityId: updated.id,
-        action: AuditAction.UPDATE,
-        metadata: { fields: Object.keys(dto) },
-        clinicId: updated.clinicId,
-      }, tx);
-
-      return updated;
+    const existing = await this.findOne(id, clinicId);
+    const duplicate = await this.prisma.provider.findFirst({
+      where: { clinicId, identify: dto.identify, id: { not: id } },
+      select: { id: true },
     });
 
-    return writeResponse('Proveedor actualizado exitosamente', provider);
+    if (duplicate) {
+      throw new ConflictException('Ya existe un proveedor con esta identificación en la clínica');
+    }
+
+    try {
+      const provider = await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.provider.update({ where: { id }, data: dto });
+
+        await this.auditService.record({
+          entity: 'Provider',
+          entityId: updated.id,
+          action: AuditAction.UPDATE,
+          metadata: { fields: Object.keys(dto) },
+          clinicId: existing.clinicId,
+        }, tx);
+
+        return updated;
+      });
+
+      return writeResponse('Proveedor actualizado exitosamente', provider);
+    } catch (error) {
+      this.handleDuplicate(error);
+      throw error;
+    }
   }
 
   async removeProvider(id: string, clinicId: string) {
@@ -184,5 +212,11 @@ export class ProvidersService {
     });
 
     return writeResponse('Servicio eliminado exitosamente', deleted);
+  }
+
+  private handleDuplicate(error: unknown): void {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      throw new ConflictException('Ya existe un proveedor con esta identificación en la clínica');
+    }
   }
 }

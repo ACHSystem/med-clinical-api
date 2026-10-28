@@ -23,6 +23,11 @@ export class CustomizeController {
     return await this.customizeService.getFormTemplates(user.clinicId, query);
   }
 
+  @Get('templates/:id')
+  async findTemplate(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
+    return detailResponse(await this.customizeService.findTemplate(id, user.clinicId, true));
+  }
+
   @Roles(Role.DOCTOR)
   @Post('templates')
   async createTemplate(@Body() dto: FormTemplateDto, @CurrentUser() user: CurrentUserData) {

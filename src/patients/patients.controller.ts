@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Query } from '@nestjs/common';
 import { PatientsService } from './patients.service';
-import { PatientDto, PatientListQueryDto } from './patients.dto';
+import { PatientDetailQueryDto, PatientDto, PatientListQueryDto, UpdatePatientDto } from './patients.dto';
 import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
 import { PaginationQueryDto } from '../common/pagination.dto';
 import { detailResponse } from '../common/api-response';
@@ -31,8 +31,14 @@ export class PatientsController {
   }
 
   @Get(':id')
-  async getPatient(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
-    return detailResponse(await this.patientsService.findOne(id, user.clinicId));
+  async getPatient(
+    @Param('id') id: string,
+    @Query() query: PatientDetailQueryDto,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    return detailResponse(
+      await this.patientsService.findOne(id, user.clinicId, query.includeInactive ?? false),
+    );
   }
 
   @Post()
@@ -41,7 +47,7 @@ export class PatientsController {
   }
 
   @Put(':id')
-  async update(@Param('id') id: string, @Body() dto: PatientDto, @CurrentUser() user: CurrentUserData) {
+  async update(@Param('id') id: string, @Body() dto: UpdatePatientDto, @CurrentUser() user: CurrentUserData) {
     return await this.patientsService.updatePatient(id, dto, user.clinicId, user.userId);
   }
 

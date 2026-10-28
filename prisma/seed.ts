@@ -96,8 +96,8 @@ async function main() {
     { name: 'Roberto', lastName: 'Sánchez', identify: 'V-01234567', email: 'roberto.sanchez@email.com', phone: '+581234567899', birthDate: new Date('1973-08-14'), gender: 'Masculino', address: 'Avenida Sur 741, Ciudad' },
   ];
 
-  // Patient tiene @@unique([clinicId, identify]) (y identify unico global), asi que
-  // la guarda de idempotencia es findFirst por clinicId + identify.
+  // Patient tiene @@unique([clinicId, identify]), asi que la guarda de
+  // idempotencia es findFirst por clinicId + identify.
   const patients: ((typeof patientsData)[number] & { id: string })[] = [];
   let patientsCreated = 0;
   for (const patient of patientsData) {
@@ -159,7 +159,7 @@ async function main() {
   const beforeProviders = created;
   let serviceCount = 0;
   for (let i = 0; i < providersData.length; i++) {
-    // Provider.identify es unico global: guarda por clinicId + identify para no duplicar.
+    // Provider.identify es unico por clinica: guarda por clinicId + identify para no duplicar.
     let provider = await prisma.provider.findFirst({
       where: { clinicId: clinic.id, identify: providersData[i].identify },
     });

@@ -38,6 +38,7 @@ export class CustomizeService {
         orderBy: [{ name: 'asc' }],
         include: {
           fields: {
+            where: { isActive: true },
             orderBy: [{ step: 'asc' }, { sortOrder: 'asc' }],
           },
         },
@@ -52,6 +53,7 @@ export class CustomizeService {
       where: { id, clinicId, ...(isActive === undefined ? {} : { isActive }) },
       include: {
         fields: {
+          where: { isActive: true },
           orderBy: [{ step: 'asc' }, { sortOrder: 'asc' }],
         },
       },
@@ -80,6 +82,7 @@ export class CustomizeService {
         where: { id: createdTemplate.id, clinicId },
         include: {
           fields: {
+            where: { isActive: true },
             orderBy: [{ step: 'asc' }, { sortOrder: 'asc' }],
           },
         },

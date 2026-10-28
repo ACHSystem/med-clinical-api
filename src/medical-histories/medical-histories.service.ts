@@ -146,9 +146,11 @@ export class MedicalHistoriesService {
     return appointment;
   }
 
-  /** Impide escribir una historia sobre un paciente de otra clinica (IDOR). */
+  /** Impide escribir una historia sobre un paciente inactivo o de otra clinica (IDOR). */
   private async assertOwnsPatient(patientId: string, clinicId: string) {
-    const patient = await this.prisma.patient.findFirst({ where: { id: patientId, clinicId } });
+    const patient = await this.prisma.patient.findFirst({
+      where: { id: patientId, clinicId, isActive: true },
+    });
     if (!patient) {
       throw new NotFoundException('Paciente no encontrado');
     }
@@ -157,7 +159,7 @@ export class MedicalHistoriesService {
 
   async findOne(id: string, clinicId: string) {
     const history = await this.prisma.medicalHistory.findFirst({
-      where: { id, clinicId },
+      where: { id, clinicId, deleted: false },
       include: {
         patient: true,
         template: true,
@@ -315,6 +317,18 @@ export class MedicalHistoriesService {
     userId: string,
   ) {
     await this.findOne(id, clinicId);
+
+    if (dto.templateId) {
+      const template = await this.prisma.formTemplate.findFirst({
+        where: { id: dto.templateId, clinicId, isActive: true },
+        select: { id: true },
+      });
+
+      if (!template) {
+        throw new NotFoundException('Plantilla no encontrada');
+      }
+    }
+
     const history = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.medicalHistory.update({
         where: { id },

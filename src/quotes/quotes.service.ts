@@ -50,9 +50,13 @@ export class QuotesService {
     return toPaginatedResult(quotes, total, query.page, query.limit);
   }
 
-  async findOne(id: string, clinicId: string) {
+  async findOne(id: string, clinicId: string, includeInactive = false) {
     const quote = await this.prisma.quote.findFirst({
-      where: { id, clinicId },
+      where: {
+        id,
+        clinicId,
+        ...(includeInactive ? {} : { isActive: true }),
+      },
       include: { patient: true, items: true },
     });
     if (!quote) {
@@ -62,8 +66,10 @@ export class QuotesService {
   }
 
   async create(quotes: CreateQuoteDto, clinicId: string, userId: string) {
-    // El presupuesto no puede colgar de un paciente de otra clinica (IDOR)
-    const patient = await this.prisma.patient.findFirst({ where: { id: quotes.patientId, clinicId } });
+    // El presupuesto no puede colgar de un paciente inactivo o de otra clinica (IDOR)
+    const patient = await this.prisma.patient.findFirst({
+      where: { id: quotes.patientId, clinicId, isActive: true },
+    });
     if (!patient) {
       throw new NotFoundException('Paciente no encontrado');
     }
@@ -103,7 +109,12 @@ export class QuotesService {
   }
 
   async update(id: string, quotes: UpdateQuoteDto, clinicId: string, userId: string) {
-    await this.findOne(id, clinicId);
+    const existing = await this.findOne(id, clinicId, true);
+
+    if (!existing.isActive && quotes.isActive !== true) {
+      throw new NotFoundException('Presupuesto no encontrado');
+    }
+
     const quote = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.quote.update({
         where: { id },

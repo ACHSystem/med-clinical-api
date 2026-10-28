@@ -1,10 +1,12 @@
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
 
+type Roles = 'ADMIN' | 'DOCTOR' | 'ASSISTANT';
+
 export interface CurrentUserData {
     userId: string;
     email: string;
     /** Rol dentro del consultorio activo (NO el de la cuenta). */
-    role: string;
+    role: Roles;
     /** Consultorio activo: el tenant usado para filtrar todos los datos. */
     clinicId: string;
 }

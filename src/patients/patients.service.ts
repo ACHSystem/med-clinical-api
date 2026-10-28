@@ -1,12 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { toPaginatedResult } from '../common/pagination';
 import { writeResponse } from '../common/api-response';
-import { PatientDto, PatientListQueryDto } from './patients.dto';
+import { PatientDto, PatientListQueryDto, UpdatePatientDto } from './patients.dto';
 import { MedicalHistoriesService } from '../medical-histories/medical-histories.service';
 import { PaginationQueryDto } from '../common/pagination.dto';
 import { AuditService } from '../audit/audit.service';
-import { AuditAction } from '../generated/prisma/client';
+import { AuditAction, Prisma } from '../generated/prisma/client';
 
 @Injectable()
 export class PatientsService {
@@ -19,7 +19,7 @@ export class PatientsService {
   async getPatients(clinicId: string, query: PatientListQueryDto) {
     const where = {
       clinicId,
-      isActive: true,
+      isActive: query.isActive ?? true,
       ...(query.gender ? { gender: query.gender } : {}),
       ...(query.search
         ? {
@@ -92,9 +92,13 @@ export class PatientsService {
     return this.medicalHistoryService.getHistoryByPatientId({ patientId, clinicId, query });
   }
 
-  async findOne(id: string, clinicId: string) {
+  async findOne(id: string, clinicId: string, includeInactive = false) {
     const patient = await this.prismaService.patient.findFirst({
-      where: { id, clinicId },
+      where: {
+        id,
+        clinicId,
+        ...(includeInactive ? {} : { isActive: true }),
+      },
     });
     if (!patient) {
       throw new NotFoundException('Paciente no encontrado');
@@ -104,77 +108,107 @@ export class PatientsService {
 
   async createPatient(dto: PatientDto, clinicId: string, userId: string) {
     const findPatient = await this.prismaService.patient.findFirst({
-      where: {
-        identify: dto.identify,
-      }
+      where: { clinicId, identify: dto.identify },
+      select: { id: true },
     });
 
     if (findPatient) {
-      throw new NotFoundException('Ya existe un Paciente con esta cedula');
+      throw new ConflictException('Ya existe un paciente con esta cédula en la clínica');
     }
 
-    const patient = await this.prismaService.$transaction(async (tx) => {
-      const created = await tx.patient.create({
-        data: {
-          name: dto.name,
-          lastName: dto.lastName,
-          identify: dto.identify,
-          email: dto.email,
-          phone: dto.phone,
-          birthDate: dto.birthDate ? new Date(dto.birthDate) : undefined,
-          gender: dto.gender,
-          address: dto.address,
-          notes: dto.notes || '',
+    try {
+      const patient = await this.prismaService.$transaction(async (tx) => {
+        const created = await tx.patient.create({
+          data: {
+            name: dto.name,
+            lastName: dto.lastName,
+            identify: dto.identify,
+            email: dto.email,
+            phone: dto.phone,
+            birthDate: dto.birthDate ? new Date(dto.birthDate) : undefined,
+            gender: dto.gender,
+            address: dto.address,
+            notes: dto.notes || '',
+            clinicId,
+          },
+        });
+
+        await this.auditService.record({
+          entity: 'Patient',
+          entityId: created.id,
+          action: AuditAction.CREATE,
+          metadata: { fields: Object.keys(dto) },
+          userId,
           clinicId,
-        },
+        }, tx);
+
+        return created;
       });
 
-      await this.auditService.record({
-        entity: 'Patient',
-        entityId: created.id,
-        action: AuditAction.CREATE,
-        metadata: { fields: Object.keys(dto) },
-        userId,
-        clinicId,
-      }, tx);
-
-      return created;
-    });
-
-    return writeResponse('Paciente agregado exitosamente', patient);
+      return writeResponse('Paciente agregado exitosamente', patient);
+    } catch (error) {
+      this.handleDuplicate(error);
+      throw error;
+    }
   }
 
-  async updatePatient(id: string, dto: PatientDto, clinicId: string, userId: string) {
-    await this.findOne(id, clinicId);
-    const patient = await this.prismaService.$transaction(async (tx) => {
-      const updated = await tx.patient.update({
-        where: { id },
-        data: {
-          name: dto.name,
-          lastName: dto.lastName,
-          identify: dto.identify,
-          email: dto.email,
-          phone: dto.phone,
-          birthDate: dto.birthDate ? new Date(dto.birthDate) : undefined,
-          gender: dto.gender,
-          address: dto.address,
-          notes: dto.notes || '',
-        },
+  async updatePatient(
+    id: string,
+    dto: UpdatePatientDto,
+    clinicId: string,
+    userId: string,
+  ) {
+    const existing = await this.findOne(id, clinicId, true);
+
+    if (!existing.isActive && dto.isActive !== true) {
+      throw new NotFoundException('Paciente no encontrado');
+    }
+
+    if (dto.identify && dto.identify !== existing.identify) {
+      const duplicate = await this.prismaService.patient.findFirst({
+        where: { clinicId, identify: dto.identify, id: { not: id } },
+        select: { id: true },
       });
 
-      await this.auditService.record({
-        entity: 'Patient',
-        entityId: updated.id,
-        action: AuditAction.UPDATE,
-        metadata: { fields: Object.keys(dto) },
-        userId,
-        clinicId,
-      }, tx);
+      if (duplicate) {
+        throw new ConflictException('Ya existe un paciente con esta cédula en la clínica');
+      }
+    }
 
-      return updated;
-    });
+    const data: Prisma.PatientUpdateInput = {};
 
-    return writeResponse('Paciente actualizado exitosamente', patient);
+    if (dto.name !== undefined) data.name = dto.name;
+    if (dto.lastName !== undefined) data.lastName = dto.lastName;
+    if (dto.identify !== undefined) data.identify = dto.identify;
+    if (dto.email !== undefined) data.email = dto.email;
+    if (dto.phone !== undefined) data.phone = dto.phone;
+    if (dto.birthDate !== undefined) data.birthDate = new Date(dto.birthDate);
+    if (dto.gender !== undefined) data.gender = dto.gender;
+    if (dto.address !== undefined) data.address = dto.address;
+    if (dto.notes !== undefined) data.notes = dto.notes || '';
+    if (dto.isActive !== undefined) data.isActive = dto.isActive;
+
+    try {
+      const patient = await this.prismaService.$transaction(async (tx) => {
+        const updated = await tx.patient.update({ where: { id }, data });
+
+        await this.auditService.record({
+          entity: 'Patient',
+          entityId: updated.id,
+          action: AuditAction.UPDATE,
+          metadata: { fields: Object.keys(dto) },
+          userId,
+          clinicId,
+        }, tx);
+
+        return updated;
+      });
+
+      return writeResponse('Paciente actualizado exitosamente', patient);
+    } catch (error) {
+      this.handleDuplicate(error);
+      throw error;
+    }
   }
 
   async deletePatient(id: string, clinicId: string, userId: string) {
@@ -198,5 +232,11 @@ export class PatientsService {
     });
 
     return writeResponse('Paciente eliminado exitosamente', patient);
+  }
+
+  private handleDuplicate(error: unknown): void {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      throw new ConflictException('Ya existe un paciente con esta cédula en la clínica');
+    }
   }
 }

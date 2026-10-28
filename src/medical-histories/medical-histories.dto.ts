@@ -264,9 +264,9 @@ export class UpdateMedicalHistoryDto {
   @IsOptional()
   notes?: string;
 
-  @IsString()
+  @IsUUID()
   @IsOptional()
-  templateId?: string;
+  templateId?: string | null;
 }
 
 
