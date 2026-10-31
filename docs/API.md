@@ -83,7 +83,7 @@ La respuesta es siempre:
 
 ### 1.6 Multitenencia
 
-`patients`, `medical-histories`, `quotes`, `providers`, `services-costs`, `payment-info` y `customize` se filtran por el consultorio activo del token en lecturas y escrituras. Acceder a un recurso de otra clínica devuelve `404`.
+`patients`, `medical-histories`, `quotes`, `providers`, `services-costs`, `payment-info`, `customize` y `dashboard` se filtran por el consultorio activo del token en lecturas y escrituras. Acceder a un recurso de otra clínica devuelve `404`.
 
 `Dolar` es global.
 
@@ -379,7 +379,37 @@ Detalle en [`docs/AUDITORIA_DATOS.md`](AUDITORIA_DATOS.md).
 
 ---
 
-## 11. Métricas
+## 11. Dashboard
+
+Base: `/api/dashboard`.
+
+| Método | Ruta | Rol | Respuesta |
+| --- | --- | --- | --- |
+| `GET` | `/dashboard` | Cualquiera | `{data:{clinicId,generatedAt,timezone,patients,appointments,consultations,quotes}}` |
+| `GET` | `/dashboard/agenda` | Cualquiera | `{data:{clinicId,generatedAt,timezone,today,upcoming}}` |
+
+`GET /dashboard` devuelve el resumen. El consultorio se toma del token activo; no acepta
+`clinicId` por query. Incluye:
+
+- pacientes activos;
+- citas de hoy y de los próximos 7 días;
+- consultas del mes actual;
+- presupuestos pendientes (`DRAFT`/`SENT`), aprobados (`APPROVED`) y total, con montos
+  agrupados por moneda.
+
+`GET /dashboard/agenda` lista la agenda de hoy y las próximas citas. Acepta `days`
+(`1..31`, default `7`) y `limit` (`1..100`, default `20`). Devuelve los datos prácticos
+de cada cita (fecha, duración, estado, tipo, canal, motivo y paciente) y `hasMore` cuando
+la ventana futura supera el límite.
+
+Los límites de día y mes se calculan en `America/Caracas`. No audita y no requiere
+`METRICS_TOKEN`.
+
+Detalle en [`docs/DASHBOARD.md`](DASHBOARD.md).
+
+---
+
+## 12. Métricas
 
 `GET /api/metrics` devuelve formato Prometheus. Requiere el header `x-metrics-token` con el valor de `METRICS_TOKEN`; si la variable no está definida, responde `404 NOT_FOUND`.
 
@@ -393,7 +423,7 @@ Detalle en [`docs/OPERACION.md`](OPERACION.md).
 
 ---
 
-## 12. Cambios rompientes para el frontend
+## 13. Cambios rompientes para el frontend
 
 1. Los GET de detalle ahora devuelven `{data}`; dejar de usar el objeto desnudo.
 2. Los listados que devolvían arrays (`/patients/:id/medical-histories`, `/medical-histories/patients/:id`, `/auth/clinics`) ahora devuelven `{data,pagination}`.

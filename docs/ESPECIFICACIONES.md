@@ -235,6 +235,8 @@ is limited to `CORS_ORIGINS`. Rate limits: 100/min per IP overall, 5/min on
 | `POST` | `/auth/register` | Requires a DOCTOR token for the target clinic; creates ASSISTANT users transactionally. Password: 8+ chars, letter and number. |
 | `GET` | `/auth/profile` | Scoped. |
 | `GET` | `/` | Nest hello-world stub. |
+| `GET` | `/dashboard` | Single clinic-scoped summary: active patients, today/upcoming appointments, monthly consultations and quote counts/amounts by currency. |
+| `GET` | `/dashboard/agenda` | Clinic-scoped agenda: today's appointments plus upcoming appointments (`days`, `limit`), with patient summary. |
 | `GET` | `/patients` | Scoped, paginated; filters by text, gender, active status and creation dates. |
 | `GET` | `/patients/:id` | Scoped. |
 | `POST` | `/patients` | Scoped. |

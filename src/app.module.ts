@@ -19,6 +19,7 @@ import { RolesGuard } from './auth/roles.guard';
 import { ObservabilityModule } from './common/observability/observability.module';
 import { AuditModule } from './audit/audit.module';
 import { UsersModule } from './users/users.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 import * as Joi from 'joi';
 
 @Module({
@@ -55,7 +56,8 @@ import * as Joi from 'joi';
     ServicesCostsModule,
     QuotesModule,
     PaymentModule,
-    UsersModule
+    UsersModule,
+    DashboardModule
   ],
   controllers: [AppController],
   providers: [
