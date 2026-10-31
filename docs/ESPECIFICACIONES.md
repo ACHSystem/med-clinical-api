@@ -160,23 +160,27 @@ idempotent, and an external failure returns `502 UPSTREAM_ERROR`. `GET
 Requirements that are part of the product and have **no code today**. Each one lists
 the schema change it implies.
 
-### 3.1 Citas y seguimiento (`Appointment`) — the core gap
+### 3.1 Citas y seguimiento (`Appointment`) — implementado
 
-The system is meant to record, per consultation: `motivo de la consulta`, `síntomas`,
-`tratamiento`, whether the patient actually attended, the date of the visit, and when
-the **next** consultation is scheduled — then surface the full history across many
-patients.
+La agenda vive en `AppointmentsModule` (`/api/appointments`). El modelo `Appointment`
+tiene `patientId`, `userId`, `scheduledAt`, `durationMin`, `type`, `channel`, `status`,
+`reason`, `notes`, timestamps por estado (`confirmedAt`, `attendedAt`, `cancelledAt`,
+`noShowAt`, `rescheduledAt`), `medicalHistoryId` opcional/único, `rescheduledFromId` y
+baja lógica (`deleted`, `deletedAt`).
 
-`MedicalHistory` covers the narrative but has no scheduling. The missing model:
+- `AppointmentStatus` es enum Prisma: `SCHEDULED`, `CONFIRMED`, `ATTENDED`, `NO_SHOW`,
+  `CANCELLED`, `RESCHEDULED`.
+- `type`/`channel` se validan contra catálogos cerrados en el DTO.
+- `SCHEDULED → CONFIRMED`; `SCHEDULED|CONFIRMED → ATTENDED` (historia obligatoria);
+  `SCHEDULED|CONFIRMED → NO_SHOW` (sin historia); `SCHEDULED|CONFIRMED → CANCELLED`;
+  `SCHEDULED|CONFIRMED → RESCHEDULED` (cita hija con `rescheduledFromId`).
+- El reagendamiento conserva la cadena y se consulta en
+  `GET /api/appointments/:id/reschedules`.
+- Se rechaza el solapamiento de médico o paciente en estados activos.
+- La agenda del dashboard y el listado ordenan por `scheduledAt`.
 
-- `Appointment`: `patientId`, `userId`, `scheduledAt` (date + time), `durationMinutes?`,
-  `attended` (bool, null while pending), `cancelled?`, `reason` (motivo de consulta),
-  `symptoms` (síntomas), `diagnosis?`, `treatment` (tratamiento),
-  `nextAppointmentAt?` (próxima consulta), `notes?`.
-- A `nextAppointmentAt` on the appointment is usually better modelled as the
-  `scheduledAt` of the *next* `Appointment` row; pick one before writing the migration.
-- Read helpers this implies: "today's agenda", "patients not seen in N months",
-  "overdue follow-ups".
+Detalle de negocio en [`docs/ADR_CITAS.md`](ADR_CITAS.md) y handoff de frontend en
+[`docs/CITAS_FRONTEND.md`](CITAS_FRONTEND.md).
 
 ### 3.2 Antecedentes clínicos estructurados del paciente
 
@@ -247,6 +251,17 @@ is limited to `CORS_ORIGINS`. Rate limits: 100/min per IP overall, 5/min on
 | `POST` | `/medical-histories` | Scoped; rejects a `patientId` from another clinic and assigns author from token. |
 | `PUT` | `/medical-histories/:id` | Scoped. |
 | `DELETE` | `/medical-histories/:id` | Scoped **hard** delete. |
+| `GET` | `/appointments` | Scoped, paginated; filters by date, status, patient, type, user and search (name/lastName/identify). Ordered by `scheduledAt`. |
+| `GET` | `/appointments/:id` | Scoped detail with patient, history and reschedule links. |
+| `GET` | `/appointments/:id/reschedules` | Scoped full reschedule chain. |
+| `POST` | `/appointments` | Scoped; always creates `SCHEDULED`; validates patient, doctor, history and overlap. |
+| `PUT` | `/appointments/:id` | Scoped; only `SCHEDULED`/`CONFIRMED`; revalidates overlap. |
+| `PUT` | `/appointments/:id/confirm` | `SCHEDULED → CONFIRMED`. |
+| `PUT` | `/appointments/:id/attend` | DOCTOR; `SCHEDULED/CONFIRMED → ATTENDED` with required history. |
+| `PUT` | `/appointments/:id/no-show` | `SCHEDULED/CONFIRMED → NO_SHOW`; history forbidden. |
+| `PUT` | `/appointments/:id/cancel` | `SCHEDULED/CONFIRMED → CANCELLED`. |
+| `PUT` | `/appointments/:id/reschedule` | `SCHEDULED/CONFIRMED → RESCHEDULED`; creates child with `rescheduledFromId`. |
+| `DELETE` | `/appointments/:id` | DOCTOR; clinic-scoped soft delete. |
 | `GET` | `/customize` | Scoped, paginated; filters by text, type, step, required and active status. |
 | `GET` | `/customize/:id` | Scoped to active clinic. |
 | `POST` | `/customize` | Scoped; associates field with the clinic's `General` template. |
@@ -296,8 +311,9 @@ implement `findOne` for some of them.
    discount, tax and total; the client cannot send `total`.
 2. ~~**Is a quote immutable once issued?**~~ Resolved: `DRAFT` is editable, `SENT` or
    higher is immutable, and `POST /quotes/:id/revise` issues a new version.
-3. **Appointments vs. history records**: are they one table or two? The product text
-   implies a single timeline per patient; the schema change depends on that answer.
+3. ~~**Appointments vs. history records**~~ Resuelto: son dos tablas. `Appointment`
+   gestiona agenda, estados y reagendamiento; `MedicalHistory` guarda el contenido
+   clínico. El vínculo es 1:1 opcional (`Appointment.medicalHistoryId` único).
 4. **Template versioning**: if a form template is edited after patients were evaluated
    with it, historical answers must stay interpretable. Decide between immutable
    versions and a "snapshot the field definitions into `MedicalHistory.data`" approach.

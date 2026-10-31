@@ -39,7 +39,7 @@ export interface QuoteSummary {
 }
 
 export interface DashboardSummary {
-  // clinicId: string;
+  clinicId: string;
   generatedAt: string;
   timezone: string;
   patients: {
@@ -81,7 +81,7 @@ export interface DashboardAgendaAppointment {
 }
 
 export interface DashboardAgenda {
-  // clinicId: string;
+  clinicId: string;
   generatedAt: string;
   timezone: string;
   today: {

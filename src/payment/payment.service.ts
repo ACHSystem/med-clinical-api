@@ -55,6 +55,7 @@ export class PaymentService {
       const created = await tx.paymentMethod.create({
         data: {
           bank: paymentMethod.bank,
+          type: paymentMethod.type ?? 'OTHER',
           identify: paymentMethod.identify,
           phone: paymentMethod.phone,
           email: paymentMethod.email,

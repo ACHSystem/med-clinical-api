@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Prisma, QuoteStatus } from '../generated/prisma/client';
+import { AppointmentStatus, Prisma, QuoteStatus } from '../generated/prisma/client';
 import {
   CurrencyTotal,
   DASHBOARD_TIMEZONE,
@@ -139,6 +139,7 @@ export class DashboardService {
     );
 
     return {
+      clinicId,
       generatedAt: now.toISOString(),
       timezone: DASHBOARD_TIMEZONE,
       patients: {
@@ -210,6 +211,7 @@ export class DashboardService {
       ]);
 
     return {
+      clinicId,
       generatedAt: now.toISOString(),
       timezone: DASHBOARD_TIMEZONE,
       today: {
@@ -257,7 +259,13 @@ function validAppointmentScope(clinicId: string) {
     clinicId,
     deleted: false,
     cancelledAt: null,
-    status: { notIn: ['CANCELLED', 'NO_SHOW'] },
+    status: {
+      notIn: [
+        AppointmentStatus.CANCELLED,
+        AppointmentStatus.NO_SHOW,
+        AppointmentStatus.RESCHEDULED,
+      ],
+    },
   };
 }
 

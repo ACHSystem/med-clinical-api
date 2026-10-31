@@ -30,6 +30,15 @@ enum QuoteStatus {
   CANCELLED
 }
 
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  ATTENDED
+  NO_SHOW
+  CANCELLED
+  RESCHEDULED
+}
+
 // Identidad de la persona. NO es el tenant: un mismo User puede trabajar en varias Clinicas.
 model User {
   id        String   @id @default(uuid())
@@ -184,13 +193,14 @@ model Appointment {
   attendedAt    DateTime? // cuándo se atendió realmente
   cancelledAt   DateTime?
   rescheduledAt DateTime?
+  noShowAt      DateTime?
 
   // Qué
-  type    String // "CONSULTA_GENERAL" | "CONTROL" | "SEGUIMIENTO" | ...
-  status  String // "SCHEDULED" | "CONFIRMED" | "ATTENDED" | ...
+  type    String            @default("GENERAL_CONSULT")
+  status  AppointmentStatus @default(SCHEDULED)
   reason  String? // motivo breve que dio el paciente
   notes   String? // notas internas de la secretaria/médico
-  channel String // "IN_PERSON" | "TELEMEDICINE" (futuro)
+  channel String            @default("IN_PERSON")
 
   // Quién
   patientId String
@@ -204,7 +214,14 @@ model Appointment {
   medicalHistoryId String?         @unique
   medicalHistory   MedicalHistory? @relation(fields: [medicalHistoryId], references: [id], onDelete: SetNull)
 
-  deleted Boolean @default(false)
+  // Reagendamiento: la cita hija apunta a la original. Cada cita solo puede
+  // originar una hija directa, por eso el indice es unico.
+  rescheduledFromId String?      @unique
+  rescheduledFrom   Appointment? @relation("AppointmentReschedule", fields: [rescheduledFromId], references: [id], onDelete: SetNull)
+  rescheduledTo     Appointment? @relation("AppointmentReschedule")
+
+  deleted   Boolean   @default(false)
+  deletedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -460,6 +477,7 @@ model AuditLog {
 model PaymentMethod {
   id        String   @id @default(uuid())
   bank      String
+  type      String
   identify  String
   phone     String
   email     String

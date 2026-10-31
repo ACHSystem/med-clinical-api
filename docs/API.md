@@ -83,7 +83,7 @@ La respuesta es siempre:
 
 ### 1.6 Multitenencia
 
-`patients`, `medical-histories`, `quotes`, `providers`, `services-costs`, `payment-info`, `customize` y `dashboard` se filtran por el consultorio activo del token en lecturas y escrituras. Acceder a un recurso de otra clínica devuelve `404`.
+`patients`, `medical-histories`, `appointments`, `quotes`, `providers`, `services-costs`, `payment-info`, `customize` y `dashboard` se filtran por el consultorio activo del token en lecturas y escrituras. Acceder a un recurso de otra clínica devuelve `404`.
 
 `Dolar` es global.
 
@@ -92,7 +92,10 @@ La respuesta es siempre:
 La matriz completa está en [`docs/PERMISOS.md`](PERMISOS.md). Resumen:
 
 - **DOCTOR:** acceso completo.
-- **ASSISTANT:** lectura de todo; puede crear/editar pacientes y presupuestos; no puede borrar, escribir historias clínicas, firmar, administrar plantillas/proveedores/costos/pagos ni guardar el dólar.
+- **ASSISTANT:** lectura de todo; puede crear/editar pacientes, presupuestos y agenda
+  (crear/editar/confirmar/cancelar/no-show/reagendar citas); no puede borrar, atender
+  citas, escribir historias clínicas, firmar, administrar plantillas/proveedores/costos/
+  pagos ni guardar el dólar.
 
 ---
 
@@ -154,14 +157,18 @@ Base: `/api/medical-histories`.
 | Método | Ruta | Rol | Respuesta |
 | --- | --- | --- | --- |
 | `GET` | `/medical-histories` | Cualquiera | `{data,pagination}` |
-| `GET` | `/medical-histories/appointments` | Cualquiera | `{data,pagination}` |
-| `GET` | `/medical-histories/appointments/:id` | Cualquiera | `{data}` |
+| `GET` | `/medical-histories/appointments` (legacy) | Cualquiera | `{data,pagination}` — usar `/appointments` |
+| `GET` | `/medical-histories/appointments/:id` (legacy) | Cualquiera | `{data}` — usar `/appointments/:id` |
 | `GET` | `/medical-histories/patients/:id` | Cualquiera | `{data,pagination}` |
 | `GET` | `/medical-histories/:id` | Cualquiera | `{data}` |
 | `POST` | `/medical-histories` | DOCTOR | `{status,message,data}` |
 | `POST` | `/medical-histories/:id/sign` | DOCTOR | `{status,message,data}` |
 | `PUT` | `/medical-histories/:id` | DOCTOR | `{status,message,data}` |
 | `DELETE` | `/medical-histories/:id` | DOCTOR | `{status,message,data}` con `deleted:true` |
+
+Las rutas de citas se movieron al módulo de agenda (`/api/appointments`). Los aliases
+`/medical-histories/appointments` se mantienen solo para lectura y están deprecados.
+`POST /medical-histories` ya no acepta el campo `appointment`.
 
 ### 4.1 Firma clínica
 
@@ -423,7 +430,103 @@ Detalle en [`docs/OPERACION.md`](OPERACION.md).
 
 ---
 
-## 13. Cambios rompientes para el frontend
+## 13. Citas (Appointments)
+
+Base: `/api/appointments`. Contrato detallado para frontend:
+[`docs/CITAS_FRONTEND.md`](CITAS_FRONTEND.md). Decisiones de modelo:
+[`docs/ADR_CITAS.md`](ADR_CITAS.md).
+
+| Método | Ruta | Rol | Respuesta |
+| --- | --- | --- | --- |
+| `GET` | `/appointments` | Cualquiera | `{data,pagination}` |
+| `GET` | `/appointments/:id` | Cualquiera | `{data}` |
+| `GET` | `/appointments/:id/reschedules` | Cualquiera | `{data:{appointmentId,rootId,chain}}` |
+| `POST` | `/appointments` | Cualquiera | `{status,message,data}` |
+| `PUT` | `/appointments/:id` | Cualquiera | `{status,message,data}` |
+| `PUT` | `/appointments/:id/confirm` | Cualquiera | `{status,message,data}` |
+| `PUT` | `/appointments/:id/attend` | DOCTOR | `{status,message,data}` |
+| `PUT` | `/appointments/:id/no-show` | Cualquiera | `{status,message,data}` |
+| `PUT` | `/appointments/:id/cancel` | Cualquiera | `{status,message,data}` |
+| `PUT` | `/appointments/:id/reschedule` | Cualquiera | `{status,message,data:{original,newAppointment}}` |
+| `DELETE` | `/appointments/:id` | DOCTOR | `{status,message,data}` con `deleted:true` |
+
+### 13.1 Estados y transiciones
+
+`AppointmentStatus`: `SCHEDULED`, `CONFIRMED`, `ATTENDED`, `NO_SHOW`, `CANCELLED`,
+`RESCHEDULED`.
+
+| Desde | Acción | Hacia | Regla |
+| --- | --- | --- | --- |
+| `SCHEDULED` | confirmar | `CONFIRMED` | guarda `confirmedAt` |
+| `SCHEDULED`/`CONFIRMED` | atender | `ATTENDED` | exige historia; guarda `attendedAt` |
+| `SCHEDULED`/`CONFIRMED` | no-show | `NO_SHOW` | prohíbe historia; guarda `noShowAt` |
+| `SCHEDULED`/`CONFIRMED` | cancelar | `CANCELLED` | guarda `cancelledAt` |
+| `SCHEDULED`/`CONFIRMED` | reagendar | `RESCHEDULED` | crea hija `SCHEDULED` con `rescheduledFromId` |
+
+Cualquier otra transición responde `400 BAD_REQUEST`. Los estados terminales no se editan
+ni se reagendan.
+
+### 13.2 Catálogos y validaciones
+
+- `type`: `GENERAL_CONSULT`, `FOLLOW_UP`, `SPECIALIST_CONSULT`, `INTERCONSULT`,
+  `EMERGENCY`, `PROCEDURE`, `TELEMEDICINE`, `POST_OP_FOLLOW_UP`, `LAB_REVIEW`.
+- `channel`: `IN_PERSON`, `TELEMEDICINE`, `PHONE`.
+- `durationMin`: `5..480`, default `30`.
+- `scheduledAt` en ISO 8601.
+- `type`/`channel` fuera del catálogo → `400 VALIDATION_ERROR`.
+
+### 13.3 Listado
+
+Filtros: `dateStart`, `dateTo`, `status`, `patientId`, `type`, `userId`, `search`, `page`,
+`limit` y `order` (`asc`/`desc`, default `asc`). `search` cubre nombre, apellido, cédula del
+paciente y `reason`. Ordena por `scheduledAt`. Cada cita incluye `status`, `channel`,
+`durationMin` y `medicalHistoryId`.
+
+### 13.4 Alta y edición
+
+- `POST /appointments` nace siempre en `SCHEDULED`.
+- `patientId`, `scheduledAt` obligatorios; `userId` es el médico asignado (default: usuario
+  autenticado).
+- `medicalHistoryId` opcional vincula una historia existente sin duplicarla; debe ser de la
+  clínica, del mismo paciente y no estar ya vinculada a otra cita.
+- `PUT /appointments/:id` solo edita `SCHEDULED`/`CONFIRMED` y no acepta `status`,
+  `patientId` ni `medicalHistoryId`.
+
+### 13.5 Atender y vínculo con la historia
+
+`PUT /appointments/:id/attend` (DOCTOR) acepta:
+
+```json
+{ "medicalHistoryId": "uuid" }
+```
+
+o
+
+```json
+{ "history": { "title": "...", "type": "GENERAL_CONSULT", "reason": "...", "symptoms": "...", "notes": "", "observations": "", "diagnosis": "...", "evaluation": "...", "date": "...", "status": "COMPLETED" } }
+```
+
+- Enviar ambos → `400`.
+- Sin historia previa y sin payload → `400`.
+- `ATTENDED` siempre queda con `medicalHistoryId`; `NO_SHOW` nunca.
+- Una historia no puede quedar vinculada a dos citas (`medicalHistoryId` único).
+- La creación inline y el cambio de estado ocurren en una transacción.
+
+### 13.6 Solapamiento
+
+Se rechaza con `409 CONFLICT` si otra cita de la clínica en estado `SCHEDULED`,
+`CONFIRMED` o `ATTENDED` se cruza en `[scheduledAt, scheduledAt + durationMin)` con el
+mismo `userId` o el mismo `patientId`. Aplica al alta, edición de fecha/duración/médico y
+reagendamiento.
+
+### 13.7 Baja lógica
+
+`DELETE /appointments/:id` marca `deleted:true` y `deletedAt`. Un segundo delete o una cita
+borrada responde `404`. Las citas borradas no aparecen en listados ni en la agenda.
+
+---
+
+## 14. Cambios rompientes para el frontend
 
 1. Los GET de detalle ahora devuelven `{data}`; dejar de usar el objeto desnudo.
 2. Los listados que devolvían arrays (`/patients/:id/medical-histories`, `/medical-histories/patients/:id`, `/auth/clinics`) ahora devuelven `{data,pagination}`.
@@ -439,5 +542,10 @@ Detalle en [`docs/OPERACION.md`](OPERACION.md).
 10. `GET /quotes` devuelve solo la última versión por defecto; usar
     `includeSuperseded=true` para el historial. Existen `GET /quotes/:id` y
     `GET /quotes/:id/versions`.
+11. Las citas ahora viven en `/api/appointments`. `GET /medical-histories/appointments`
+    queda como alias deprecado de solo lectura.
+12. `POST /medical-histories` ya no acepta el campo `appointment`. Usar
+    `POST /api/appointments` o `PUT /api/appointments/:id/attend` con `history`.
+13. `Appointment.status` pasó de texto libre al enum `SCHEDULED|CONFIRMED|ATTENDED|NO_SHOW|CANCELLED|RESCHEDULED`. Usar los endpoints de transición; `PUT /appointments/:id` no cambia el estado.
 
 El repo `med-clinical` no fue modificado en esta pasada; este documento es el handoff.

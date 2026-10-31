@@ -297,8 +297,8 @@ async function main() {
 
   // Metodos de pago: los dos bancos con los que trabaja el consultorio.
   const paymentMethodsData = [
-    { bank: 'Banesco', identify: '0134-0123-4567-8901', phone: '+582125550101', email: 'pagos@consultorio-principal.com', account: 'Ahorros 0134012345678901' },
-    { bank: 'Mercantil', identify: '0105-0987-6543-2109', phone: '+582125550102', email: 'pagos@consultorio-principal.com', account: 'Corriente 0105098765432109' },
+    { bank: 'Banesco', type: 'BANK_TRANSFER', identify: '0134-0123-4567-8901', phone: '+582125550101', email: 'pagos@consultorio-principal.com', account: 'Ahorros 0134012345678901' },
+    { bank: 'Mercantil', type: 'BANK_TRANSFER', identify: '0105-0987-6543-2109', phone: '+582125550102', email: 'pagos@consultorio-principal.com', account: 'Corriente 0105098765432109' },
   ];
 
   for (const method of paymentMethodsData) {

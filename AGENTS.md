@@ -10,6 +10,10 @@ histories, custom intake forms, providers, service pricing, quotes).
 - **API reference: `docs/API.md`** — endpoint-by-endpoint contract for the frontend
   (payloads, response envelopes, form schemas, and the list of known defects). Update it
   whenever a route, DTO or response shape changes.
+- **Appointments: `docs/ADR_CITAS.md`** (model, states, transitions, reschedule and overlap
+  rules) and **`docs/CITAS_FRONTEND.md`** (frontend handoff). `AppointmentsModule` owns
+  `/api/appointments`; the old `GET /medical-histories/appointments` routes are read-only
+  aliases.
 - **Permissions: `docs/PERMISOS.md`** — DOCTOR/ASSISTANT matrix and frontend handoff.
 - **Operations: `docs/OPERACION.md`** — structured logs, request ID and metrics.
 - **Data audit: `docs/AUDITORIA_DATOS.md`** — `AuditLog`, actions and sanitization.

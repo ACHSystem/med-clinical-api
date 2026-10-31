@@ -6,6 +6,7 @@ import { AuthModule } from './auth/auth.module';
 import { ProvidersModule } from './providers/providers.module';
 import { PatientsModule } from './patients/patients.module';
 import { CustomizeModule } from './customize/customize.module';
+import { AppointmentsModule } from './appointments/appointments.module';
 import { MedicalHistoriesModule } from './medical-histories/medical-histories.module';
 import { ServicesCostsModule } from './services-costs/services-costs.module';
 import { QuotesModule } from './quotes/quotes.module';
@@ -50,6 +51,9 @@ import * as Joi from 'joi';
     AuditModule,
     AuthModule,
     ProvidersModule,
+    // Antes de PatientsModule/MedicalHistoriesModule: los aliases
+    // /medical-histories/appointments deben registrarse antes de /medical-histories/:id.
+    AppointmentsModule,
     PatientsModule,
     CustomizeModule,
     MedicalHistoriesModule,

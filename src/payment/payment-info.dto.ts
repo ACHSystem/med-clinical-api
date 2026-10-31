@@ -13,6 +13,10 @@ export class PaymentMethodDto {
   @IsString()
   @IsNotEmpty()
   bank!: string;
+
+  @IsString()
+  @IsOptional()
+  type?: string;
   
   @IsString()
   @IsNotEmpty()

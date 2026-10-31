@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Query } from '@nestjs/common';
 import { MedicalHistoriesService } from './medical-histories.service';
-import { AppointmentsListQueryDto, CreateMedicalHistoryDto, MedicalHistoryListQueryDto, UpdateMedicalHistoryDto } from './medical-histories.dto';
+import { CreateMedicalHistoryDto, MedicalHistoryListQueryDto, UpdateMedicalHistoryDto } from './medical-histories.dto';
 import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
 import { PaginationQueryDto } from '../common/pagination.dto';
 import { detailResponse } from '../common/api-response';
@@ -17,22 +17,6 @@ export class MedicalHistoriesController {
     @CurrentUser() user: CurrentUserData,
   ) {
     return await this.medicalHistoriesService.getAllHistories(user.clinicId, query);
-  }
-
-  @Get('/appointments')
-  async getAppointments(
-    @Query() query: AppointmentsListQueryDto,
-    @CurrentUser() user: CurrentUserData,
-  ) {
-    return await this.medicalHistoriesService.getAppointments(user.clinicId, query);
-  }
-
-  @Get('/appointments/:id')
-  async getAppointmentsById(
-    @Param('id') id: string,
-    @CurrentUser() user: CurrentUserData,
-  ) {
-    return detailResponse(await this.medicalHistoriesService.getAppointmentsById(user.clinicId, id));
   }
 
   @Get('/patients/:id')
