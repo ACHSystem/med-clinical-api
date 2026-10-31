@@ -139,7 +139,6 @@ export class DashboardService {
     );
 
     return {
-      clinicId,
       generatedAt: now.toISOString(),
       timezone: DASHBOARD_TIMEZONE,
       patients: {
@@ -160,7 +159,7 @@ export class DashboardService {
     };
   }
 
-  async getAgenda(
+  async getAppointments(
     clinicId: string,
     query: DashboardAgendaQueryDto,
   ): Promise<DashboardAgenda> {
@@ -211,7 +210,6 @@ export class DashboardService {
       ]);
 
     return {
-      clinicId,
       generatedAt: now.toISOString(),
       timezone: DASHBOARD_TIMEZONE,
       today: {

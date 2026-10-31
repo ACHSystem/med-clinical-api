@@ -11,13 +11,13 @@ import { DashboardAgendaQueryDto } from './dashboard.dto';
 export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
 
-  @Get('agenda')
-  async getAgenda(
+  @Get('appointment')
+  async getAppointments(
     @Query() query: DashboardAgendaQueryDto,
     @CurrentUser() user: CurrentUserData,
   ) {
     return detailResponse(
-      await this.dashboardService.getAgenda(user.clinicId, query),
+      await this.dashboardService.getAppointments(user.clinicId, query),
     );
   }
 
