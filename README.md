@@ -67,6 +67,9 @@ Se construyó una **API REST multi-tenant** que modela el negocio real:
   Cada `MedicalHistory` guarda las respuestas en un campo JSON (`data`) y un
   `templateSnapshot` con la definición de la plantilla **en el momento del guardado**, de
   modo que la historia sigue siendo interpretable aunque la plantilla cambie o se desactive.
+- **Antecedentes clínicos curados.** `PatientCondition` guarda patologías, alergias,
+  condiciones y antecedentes con vigencia, origen y dedupe; la ficha agrega una timeline
+  derivada de las historias (ver `docs/ADR_ANTECEDENTES.md`).
 - **Citas y tratamientos.** `Appointment` modela la agenda (fecha/hora, tipo, estado,
   confirmación/asistencia) y se enlaza 1:1 con la historia; `MedicalTreatments` +
   `TreatmentMedication` + catálogo `Medication` registran el plan y la indicación concreta de
@@ -80,7 +83,8 @@ Se construyó una **API REST multi-tenant** que modela el negocio real:
 - **Permisos por membresía.** `RolesGuard` aplica la matriz DOCTOR/ASSISTANT en endpoints
   sensibles (ver `docs/PERMISOS.md`).
 - **Auditoría y firma.** `AuditLog` registra altas, ediciones, bajas y firmas; las historias
-  guardan `signedAt`/`signedById` (ver `docs/AUDITORIA_DATOS.md`).
+  guardan `signedAt`/`signedById` y su ciclo `DRAFT → COMPLETED → AMENDED/CANCELLED`
+  (ver `docs/AUDITORIA_DATOS.md`).
 - **Observabilidad.** Logs JSON con `pino`, request ID y métricas Prometheus en
   `/api/metrics` (ver `docs/OPERACION.md`).
 

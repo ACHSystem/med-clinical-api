@@ -1,6 +1,12 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Query } from '@nestjs/common';
 import { MedicalHistoriesService } from './medical-histories.service';
-import { CreateMedicalHistoryDto, MedicalHistoryListQueryDto, UpdateMedicalHistoryDto } from './medical-histories.dto';
+import {
+  AmendMedicalHistoryDto,
+  CancelMedicalHistoryDto,
+  CreateMedicalHistoryDto,
+  MedicalHistoryListQueryDto,
+  UpdateMedicalHistoryDto,
+} from './medical-histories.dto';
 import { CurrentUser, CurrentUserData } from '../common/decorators/current-user.decorator';
 import { PaginationQueryDto } from '../common/pagination.dto';
 import { detailResponse } from '../common/api-response';
@@ -47,6 +53,32 @@ export class MedicalHistoriesController {
   @Post(':id/sign')
   async signMedicalHistory(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
     return await this.medicalHistoriesService.signMedicalHistory(id, user.clinicId, user.userId);
+  }
+
+  @Roles(Role.DOCTOR)
+  @Put(':id/complete')
+  async completeMedicalHistory(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
+    return await this.medicalHistoriesService.completeMedicalHistory(id, user.clinicId, user.userId);
+  }
+
+  @Roles(Role.DOCTOR)
+  @Post(':id/amend')
+  async amendMedicalHistory(
+    @Param('id') id: string,
+    @Body() dto: AmendMedicalHistoryDto,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    return await this.medicalHistoriesService.amendMedicalHistory(id, dto, user.clinicId, user.userId);
+  }
+
+  @Roles(Role.DOCTOR)
+  @Put(':id/cancel')
+  async cancelMedicalHistory(
+    @Param('id') id: string,
+    @Body() dto: CancelMedicalHistoryDto,
+    @CurrentUser() user: CurrentUserData,
+  ) {
+    return await this.medicalHistoriesService.cancelMedicalHistory(id, dto, user.clinicId, user.userId);
   }
 
   @Roles(Role.DOCTOR)

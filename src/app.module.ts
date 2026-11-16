@@ -5,6 +5,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { ProvidersModule } from './providers/providers.module';
 import { PatientsModule } from './patients/patients.module';
+import { PatientConditionsModule } from './patient-conditions/patient-conditions.module';
 import { CustomizeModule } from './customize/customize.module';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { MedicalHistoriesModule } from './medical-histories/medical-histories.module';
@@ -55,6 +56,7 @@ import * as Joi from 'joi';
     // /medical-histories/appointments deben registrarse antes de /medical-histories/:id.
     AppointmentsModule,
     PatientsModule,
+    PatientConditionsModule,
     CustomizeModule,
     MedicalHistoriesModule,
     ServicesCostsModule,

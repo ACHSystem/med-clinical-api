@@ -14,6 +14,9 @@ histories, custom intake forms, providers, service pricing, quotes).
   rules) and **`docs/CITAS_FRONTEND.md`** (frontend handoff). `AppointmentsModule` owns
   `/api/appointments`; the old `GET /medical-histories/appointments` routes are read-only
   aliases.
+- **Antecedentes: `docs/ADR_ANTECEDENTES.md`** — opción híbrida, tipos, vigencia,
+  duplicados, origen y qué muestra la ficha. `PatientConditionsModule` owns
+  `/api/patients/:patientId/conditions` and `/clinical-summary`.
 - **Permissions: `docs/PERMISOS.md`** — DOCTOR/ASSISTANT matrix and frontend handoff.
 - **Operations: `docs/OPERACION.md`** — structured logs, request ID and metrics.
 - **Data audit: `docs/AUDITORIA_DATOS.md`** — `AuditLog`, actions and sanitization.

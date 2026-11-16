@@ -39,6 +39,21 @@ enum AppointmentStatus {
   RESCHEDULED
 }
 
+enum MedicalHistoryStatus {
+  DRAFT
+  COMPLETED
+  AMENDED
+  CANCELLED
+  ARCHIVED
+}
+
+enum PatientConditionKind {
+  PATHOLOGY
+  ALLERGY
+  CONDITION
+  ANTECEDENT
+}
+
 // Identidad de la persona. NO es el tenant: un mismo User puede trabajar en varias Clinicas.
 model User {
   id        String   @id @default(uuid())
@@ -52,12 +67,13 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships      ClinicUser[]
-  createdHistories MedicalHistory[] @relation("HistoryAuthor")
-  signedHistories  MedicalHistory[] @relation("HistorySigner")
-  createdQuotes    Quote[]          @relation("QuoteAuthor")
-  appointments     Appointment[]
-  auditLogs        AuditLog[]
+  memberships        ClinicUser[]
+  createdHistories   MedicalHistory[] @relation("HistoryAuthor")
+  signedHistories    MedicalHistory[] @relation("HistorySigner")
+  cancelledHistories MedicalHistory[] @relation("HistoryCanceller")
+  createdQuotes      Quote[]          @relation("QuoteAuthor")
+  appointments       Appointment[]
+  auditLogs          AuditLog[]
 }
 
 // Tenant: el consultorio. Todos los datos de negocio cuelgan de aqui, no del User.
@@ -84,6 +100,7 @@ model Clinic {
   appointments        Appointment[]
   medications         Medication[]
   medicalTreatments   MedicalTreatments[]
+  patientConditions   PatientCondition[]
   auditLogs           AuditLog[]
 
   @@unique([slug])
@@ -124,8 +141,9 @@ model Patient {
   updatedAt DateTime  @updatedAt
 
   clinicId         String
-  clinic           Clinic           @relation(fields: [clinicId], references: [id])
+  clinic           Clinic             @relation(fields: [clinicId], references: [id])
   medicalHistories MedicalHistory[]
+  conditions       PatientCondition[]
   quotes           Quote[]
   appointments     Appointment[]
 
@@ -247,7 +265,7 @@ model MedicalHistory {
   evaluation String
 
   date   DateTime
-  status String
+  status MedicalHistoryStatus @default(DRAFT)
 
   patientId String
   patient   Patient @relation(fields: [patientId], references: [id])
@@ -281,9 +299,52 @@ model MedicalHistory {
   signedById String?
   signedBy   User?     @relation("HistorySigner", fields: [signedById], references: [id], onDelete: SetNull)
 
+  // Addendum: la fila AMENDED referencia la historia original.
+  amendsId    String?
+  amends      MedicalHistory?  @relation("HistoryAmendments", fields: [amendsId], references: [id], onDelete: SetNull)
+  amendments  MedicalHistory[] @relation("HistoryAmendments")
+  amendReason String?
+  amendedAt   DateTime?
+
+  // Cancelación: se conserva el registro y la firma original.
+  cancelledAt   DateTime?
+  cancelledById String?
+  cancelledBy   User?     @relation("HistoryCanceller", fields: [cancelledById], references: [id], onDelete: SetNull)
+  cancelReason  String?
+
+  sourceConditions PatientCondition[] @relation("ConditionSource")
+
   @@index([clinicId, patientId, createdAt, type, status])
   @@index([createdById])
   @@index([signedById])
+  @@index([amendsId])
+  @@index([cancelledById])
+  @@index([clinicId, patientId, status, date])
+}
+
+// Antecedente clínico curado del paciente. La timeline se deriva de MedicalHistory;
+// esta tabla guarda solo lo que el médico decide conservar entre consultas.
+model PatientCondition {
+  id                     String               @id @default(uuid())
+  patientId              String
+  patient                Patient              @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  clinicId               String
+  clinic                 Clinic               @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  kind                   PatientConditionKind
+  label                  String
+  normalizedLabel        String
+  notes                  String?
+  diagnosedAt            DateTime?
+  isActive               Boolean              @default(true)
+  sourceMedicalHistoryId String?
+  sourceMedicalHistory   MedicalHistory?      @relation("ConditionSource", fields: [sourceMedicalHistoryId], references: [id], onDelete: SetNull)
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+
+  @@unique([patientId, kind, normalizedLabel])
+  @@index([clinicId, patientId, kind, isActive])
+  @@index([patientId, kind])
+  @@index([sourceMedicalHistoryId])
 }
 
 model MedicalTreatments {
@@ -477,7 +538,7 @@ model AuditLog {
 model PaymentMethod {
   id        String   @id @default(uuid())
   bank      String
-  type      String
+  type      String   @default("") // "CREDIT_CARD" | "DEBIT_CARD" | "BANK_TRANSFER" | "CASH" | "OTHER"
   identify  String
   phone     String
   email     String

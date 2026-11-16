@@ -1,8 +1,15 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { AuditAction, MedicalHistory, Prisma } from '../generated/prisma/client';
+import {
+  AuditAction,
+  MedicalHistory,
+  MedicalHistoryStatus,
+  Prisma,
+} from '../generated/prisma/client';
 import { MedicalHistoryPayloadDto } from './medical-histories.dto';
+import { buildTreatmentsCreateData, loadMedicationSnapshots } from './medical-history-treatments';
+import { prepareVitalSigns } from './vital-signs';
 
 /**
  * Escritura de historias reutilizable por MedicalHistoriesModule y
@@ -42,21 +49,10 @@ export class MedicalHistoryWriterService {
       }
     }
 
-    const medicationIds = [
-      ...(dto.medicalTreatments?.flatMap((treatment) => [
-        ...(treatment.medicationId ? [treatment.medicationId] : []),
-        ...(treatment.treatmentMedications?.flatMap((medication) => medication.medicationId ? [medication.medicationId] : []) ?? []),
-      ]) ?? []),
-    ];
-    if (medicationIds.length > 0) {
-      const medications = await tx.medication.findMany({
-        where: { id: { in: [...new Set(medicationIds)] }, clinicId },
-        select: { id: true },
-      });
-      if (medications.length !== new Set(medicationIds).size) {
-        throw new NotFoundException('Medicamento no encontrado');
-      }
-    }
+    const treatments = dto.medicalTreatments ?? [];
+    const snapshots = await loadMedicationSnapshots(tx, treatments, clinicId);
+    const status = dto.status ?? MedicalHistoryStatus.DRAFT;
+    const completedAt = status === MedicalHistoryStatus.COMPLETED ? new Date() : null;
 
     const created = await tx.medicalHistory.create({
       data: {
@@ -68,38 +64,26 @@ export class MedicalHistoryWriterService {
         diagnosis: dto.diagnosis,
         evaluation: dto.evaluation,
         date: new Date(dto.date),
-        status: dto.status,
-        vitalSigns: dto.vitalSigns,
+        status,
+        vitalSigns: (prepareVitalSigns(dto.vitalSigns) ?? undefined) as
+          | Prisma.InputJsonValue
+          | undefined,
         data: dto.data,
         notes: dto.notes,
         patientId,
         templateId: dto.templateId || null,
         templateSnapshot: dto.templateSnapshot,
-        medicalTreatments: dto.medicalTreatments
-          ? {
-            create: dto.medicalTreatments.map(({ treatmentMedications, startDate, endDate, ...treatment }) => ({
-              ...treatment,
-              startDate: startDate ? new Date(startDate) : undefined,
-              endDate: endDate ? new Date(endDate) : undefined,
-              clinicId,
-              treatmentMedications: treatmentMedications
-                ? {
-                  create: treatmentMedications.map(({ startDate, endDate, ...medication }) => ({
-                    ...medication,
-                    startDate: startDate ? new Date(startDate) : undefined,
-                    endDate: endDate ? new Date(endDate) : undefined,
-                    clinicId,
-                  })),
-                }
-                : undefined,
-            })),
-          }
-          : undefined,
+        medicalTreatments:
+          dto.medicalTreatments !== undefined
+            ? { create: buildTreatmentsCreateData(treatments, clinicId, snapshots) }
+            : undefined,
         appointment: appointmentId
           ? { connect: { id: appointmentId } }
           : undefined,
         clinicId,
         createdById: userId,
+        signedAt: completedAt,
+        signedById: completedAt ? userId : null,
       },
     });
 
@@ -109,6 +93,7 @@ export class MedicalHistoryWriterService {
       action: AuditAction.CREATE,
       metadata: {
         fields: ['title', 'type', 'status', 'templateId'],
+        status,
         ...(appointmentId ? { appointmentId } : {}),
       },
       userId,

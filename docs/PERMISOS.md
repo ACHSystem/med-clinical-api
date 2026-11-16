@@ -13,8 +13,14 @@ puede ser `DOCTOR` en un consultorio y `ASSISTANT` en otro.
 | Pacientes: crear / editar / reactivar | Sí | Sí |
 | Pacientes: borrar | Sí | No |
 | Historias clínicas: leer | Sí | Sí |
-| Historias clínicas: crear / editar / borrar | Sí | No |
-| Historias clínicas: firmar | Sí | No |
+| Historias clínicas: crear / editar / borrar borradores | Sí | No |
+| Historias clínicas: completar/firmar, addendum y cancelar | Sí | No |
+| Antecedentes clínicos: leer | Sí | Sí |
+| Antecedentes clínicos: crear / editar / desactivar | Sí | No |
+| Citas: leer / listar agenda | Sí | Sí |
+| Citas: crear / editar / confirmar / cancelar / no-show / reagendar | Sí | Sí |
+| Citas: marcar atendida (`ATTENDED`) y vincular historia | Sí | No |
+| Citas: borrar (baja lógica) | Sí | No |
 | Plantillas y campos: leer | Sí | Sí |
 | Plantillas y campos: crear / editar / borrar / reordenar | Sí | No |
 | Proveedores y servicios: leer | Sí | Sí |
@@ -48,7 +54,11 @@ inútiles, el frontend debe:
 1. Leer `AuthService.user()?.role` y construir un `PermissionService` con la matriz de arriba.
 2. Ocultar o deshabilitar:
    - Pacientes: botón de eliminar.
-   - Historias: “Nueva consulta”, guardar/editar/borrar y el botón de firma.
+   - Historias: “Nueva consulta”, guardar/editar/borrar borradores, completar/firmar,
+     addendum y cancelar.
+   - Antecedentes: alta, edición y desactivación.
+   - Citas: “Atender” y “Eliminar”. El resto de acciones de agenda sí están disponibles
+     para ASSISTANT.
    - Plantillas: alta, edición, borrado y reordenamiento.
    - Proveedores: alta, edición, borrado y CRUD de servicios.
    - Costos: alta, edición, borrado y guardado de dólar.

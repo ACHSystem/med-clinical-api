@@ -50,7 +50,7 @@ Registered once, then referenced by every history and quote.
 | Correo | `email` | Optional, validated as an email on create. |
 | Edad | `birthDate` | Stored as a date; **age is never stored or returned**, it must be derived. |
 | Sexo | `gender` | Free-text string, e.g. `Femenino` / `Masculino`. Not an enum. |
-| Patologías, alergias, condiciones, antecedentes | `notes` | **Only a single free-text field exists.** Structured lists are missing (§3.2). |
+| Patologías, alergias, condiciones, antecedentes | `PatientCondition` | Listas estructuradas por tipo, vigencia y origen. `Patient.notes` se conserva como nota general legacy. Ver [`ADR_ANTECEDENTES.md`](ADR_ANTECEDENTES.md). |
 | — | `address` | Extra field, not in the original requirement. |
 
 ### 2.2 Historias médicas — `MedicalHistory`
@@ -59,14 +59,22 @@ One record per consultation of a patient. Answers to the custom intake form are 
 in the `data` JSON column as a flat `{ fieldName: value }` object, keyed by whatever the
 client sends — nothing validates it against `CustomField`.
 
-- `title` (consultation title), `data` (JSON answers), `notes` (free text),
+- `title`, `type`, `reason`, `symptoms`, `notes`, `observations`, `diagnosis`,
+  `evaluation`, `date`, `vitalSigns` (structured JSON), `data` (JSON answers),
   `patientId`, `clinicId`, `createdById`, timestamps. The clinic and author are assigned
   from the authenticated user; the patient must belong to that clinic.
+- `status` es enum: `DRAFT | COMPLETED | AMENDED | CANCELLED | ARCHIVED`. Solo `DRAFT` es
+  editable; `COMPLETED` se cierra con `signedAt`/`signedById` y requiere addendum;
+  `AMENDED` es una fila nueva firmada que referencia al original con `amendsId`;
+  `CANCELLED` conserva el registro y la firma.
+- `medicalTreatments` y `treatmentMedications` se reemplazan en una transacción al editar
+  un borrador. El medicamento guarda snapshot de nombre, principio activo, presentación y
+  concentración.
 - `GET /api/medical-histories/patient/:patientId` returns the patient's whole history,
   newest first, so the "historial de múltiples pacientes" is assembled client-side from
   one request per patient.
-- Delete is a **hard** delete here (the only module that does not soft-delete).
-- **No appointment date, no attendance flag, no next-appointment date** — see §3.1.
+- Delete is a **soft** delete (`deleted`, `deletedAt`) and only for `DRAFT`.
+- La agenda y la asistencia viven en `Appointment` — see §3.1.
 
 ### 2.3 Formularios personalizados — `CustomField`
 
@@ -155,10 +163,10 @@ idempotent, and an external failure returns `502 UPSTREAM_ERROR`. `GET
 
 ---
 
-## 3. Specified but not implemented
+## 3. Features especificadas
 
-Requirements that are part of the product and have **no code today**. Each one lists
-the schema change it implies.
+Secciones 3.1 y 3.2 ya implementadas. Las restantes siguen siendo requisitos del
+producto sin código; cada una lista el cambio de schema que implica.
 
 ### 3.1 Citas y seguimiento (`Appointment`) — implementado
 
@@ -182,15 +190,22 @@ baja lógica (`deleted`, `deletedAt`).
 Detalle de negocio en [`docs/ADR_CITAS.md`](ADR_CITAS.md) y handoff de frontend en
 [`docs/CITAS_FRONTEND.md`](CITAS_FRONTEND.md).
 
-### 3.2 Antecedentes clínicos estructurados del paciente
+### 3.2 Antecedentes clínicos estructurados del paciente — implementado
 
-`patologías`, `alergias`, `condiciones` and `antecedentes` are each a list that
-repeats across consultations and must be queryable ("all hypertensive patients").
-Today they only fit in `notes`, which is unsearchable free text.
+`PatientCondition` guarda las listas curadas de patologías, alergias, condiciones y
+antecedentes por paciente. Se consultan por tipo, etiqueta, vigencia y origen, y se
+muestran en la ficha junto a una timeline derivada de las historias.
 
-Suggested shape: `PatientCondition` (`patientId`, `kind` enum
-`PATHOLOGY|ALLERGY|CONDITION|ANTECEDENT`, `label`, `notes?`, `diagnosedAt?`, `isActive`),
-which also subsumes the free-text `notes` field without breaking it.
+- Enum `PatientConditionKind`: `PATHOLOGY | ALLERGY | CONDITION | ANTECEDENT`.
+- Dedupe por `patientId + kind + normalizedLabel`; reactivación en vez de duplicado.
+- `sourceMedicalHistoryId` vincula el antecedente con la historia que lo originó.
+- La migración no convierte diagnósticos automáticamente: `Patient.notes` y
+  `MedicalHistory.diagnosis` se conservan y el médico crea el antecedente explícitamente.
+- Endpoints: `/api/patients/:patientId/conditions` y
+  `/api/patients/:patientId/clinical-summary`.
+
+Detalle de decisión, definiciones y estrategia legacy en
+[`ADR_ANTECEDENTES.md`](ADR_ANTECEDENTES.md).
 
 ### 3.3 Plantillas de formulario por condición
 
@@ -246,11 +261,21 @@ is limited to `CORS_ORIGINS`. Rate limits: 100/min per IP overall, 5/min on
 | `POST` | `/patients` | Scoped. |
 | `PUT` | `/patients/:id` | Scoped, partial update; accepts `isActive:true` to reactivate. Duplicate identify → 409. |
 | `DELETE` | `/patients/:id` | Scoped soft delete; second delete → 404. |
-| `GET` | `/medical-histories/patient/:patientId` | Scoped, paginated; verifies patient and filters by text, type and creation dates. |
-| `GET` | `/medical-histories/:id` | Scoped. |
+| `GET` | `/patients/:patientId/conditions` | Scoped, paginated; filters by `kind`, `isActive` and text. |
+| `POST` | `/patients/:patientId/conditions` | DOCTOR; dedupe por tipo + etiqueta normalizada. |
+| `GET` | `/patients/:patientId/conditions/:conditionId` | Scoped. |
+| `PUT` | `/patients/:patientId/conditions/:conditionId` | DOCTOR; `isActive:true` reactiva. |
+| `DELETE` | `/patients/:patientId/conditions/:conditionId` | DOCTOR; desactiva, no borra. |
+| `GET` | `/patients/:patientId/clinical-summary` | Ficha: condiciones, alergias, timeline y últimos signos vitales. |
+| `GET` | `/medical-histories/patient/:patientId` | Scoped, paginated; verifies patient and filters by text, type, status and creation dates. |
+| `GET` | `/medical-histories/:id` | Scoped; incluye `canEdit`, `allowedActions`, addenda y firma. |
 | `POST` | `/medical-histories` | Scoped; rejects a `patientId` from another clinic and assigns author from token. |
-| `PUT` | `/medical-histories/:id` | Scoped. |
-| `DELETE` | `/medical-histories/:id` | Scoped **hard** delete. |
+| `PUT` | `/medical-histories/:id` | Solo `DRAFT`; actualización clínica y reemplazo de tratamientos en una transacción. |
+| `PUT` | `/medical-histories/:id/complete` | DOCTOR; `DRAFT → COMPLETED`, guarda `signedAt`/`signedById`. |
+| `POST` | `/medical-histories/:id/sign` | Alias de `complete`; permite firmar un `COMPLETED` legacy sin firma. |
+| `POST` | `/medical-histories/:id/amend` | DOCTOR; `COMPLETED → AMENDED` en una fila nueva con `amendsId`. |
+| `PUT` | `/medical-histories/:id/cancel` | DOCTOR; `DRAFT/COMPLETED → CANCELLED`, conserva el registro. |
+| `DELETE` | `/medical-histories/:id` | Solo `DRAFT`; soft delete. |
 | `GET` | `/appointments` | Scoped, paginated; filters by date, status, patient, type, user and search (name/lastName/identify). Ordered by `scheduledAt`. |
 | `GET` | `/appointments/:id` | Scoped detail with patient, history and reschedule links. |
 | `GET` | `/appointments/:id/reschedules` | Scoped full reschedule chain. |

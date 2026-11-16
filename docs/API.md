@@ -148,6 +148,47 @@ Base: `/api/patients`.
 - La misma cédula puede existir en dos clínicas distintas.
 - Un segundo `DELETE` responde `404`.
 
+### 3.1 Antecedentes clínicos
+
+Base: `/api/patients/:patientId/conditions`.
+
+| Método | Ruta | Rol | Respuesta |
+| --- | --- | --- | --- |
+| `GET` | `/patients/:patientId/conditions` | Cualquiera | `{data,pagination}` |
+| `POST` | `/patients/:patientId/conditions` | DOCTOR | `{status,message,data}` |
+| `GET` | `/patients/:patientId/conditions/:conditionId` | Cualquiera | `{data}` |
+| `PUT` | `/patients/:patientId/conditions/:conditionId` | DOCTOR | `{status,message,data}` |
+| `DELETE` | `/patients/:patientId/conditions/:conditionId` | DOCTOR | `{status,message,data}` con `isActive:false` |
+| `GET` | `/patients/:patientId/clinical-summary` | Cualquiera | `{data}` — ficha agregada |
+
+Payload de alta/edición:
+
+```json
+{
+  "kind": "PATHOLOGY",
+  "label": "Hipertensión arterial",
+  "notes": "En tratamiento con losartán",
+  "diagnosedAt": "2024-01-15",
+  "isActive": true,
+  "sourceMedicalHistoryId": "uuid-opcional"
+}
+```
+
+- `kind`: `PATHOLOGY | ALLERGY | CONDITION | ANTECEDENT`.
+- `label`: 2–120 caracteres, obligatoria; se normaliza para dedupe.
+- Equivalencia = mismo paciente + `kind` + etiqueta normalizada.
+- Duplicado activo → `409 CONFLICT`.
+- Duplicado inactivo → se reactiva y actualiza la misma fila.
+- `sourceMedicalHistoryId` solo en creación; debe ser una historia del mismo paciente y
+  clínica, no borrada.
+- `DELETE` desactiva (`isActive:false`), no borra. Un segundo delete → `404`.
+- Reactivación: `PUT` con `{ "isActive": true }`.
+- `GET` acepta `kind`, `isActive`, `search`, `page`, `limit`.
+- `GET /patients/:patientId/clinical-summary?timelineLimit=20` devuelve:
+  `patient`, `age`, `conditions`, `activeAllergies`, `timeline` y `latestVitalSigns`.
+- Los datos legacy de `Patient.notes` y `MedicalHistory.diagnosis` no se migran
+  automáticamente; se muestran en la ficha y se convierten manualmente.
+
 ---
 
 ## 4. Medical histories
@@ -160,36 +201,101 @@ Base: `/api/medical-histories`.
 | `GET` | `/medical-histories/appointments` (legacy) | Cualquiera | `{data,pagination}` — usar `/appointments` |
 | `GET` | `/medical-histories/appointments/:id` (legacy) | Cualquiera | `{data}` — usar `/appointments/:id` |
 | `GET` | `/medical-histories/patients/:id` | Cualquiera | `{data,pagination}` |
-| `GET` | `/medical-histories/:id` | Cualquiera | `{data}` |
+| `GET` | `/medical-histories/:id` | Cualquiera | `{data}` con `canEdit`, `allowedActions`, addenda y firma |
 | `POST` | `/medical-histories` | DOCTOR | `{status,message,data}` |
-| `POST` | `/medical-histories/:id/sign` | DOCTOR | `{status,message,data}` |
-| `PUT` | `/medical-histories/:id` | DOCTOR | `{status,message,data}` |
-| `DELETE` | `/medical-histories/:id` | DOCTOR | `{status,message,data}` con `deleted:true` |
+| `POST` | `/medical-histories/:id/sign` | DOCTOR | Alias de `complete` |
+| `PUT` | `/medical-histories/:id/complete` | DOCTOR | `DRAFT → COMPLETED` |
+| `POST` | `/medical-histories/:id/amend` | DOCTOR | Crea `AMENDED` con `amendsId` |
+| `PUT` | `/medical-histories/:id/cancel` | DOCTOR | `DRAFT/COMPLETED → CANCELLED` |
+| `PUT` | `/medical-histories/:id` | DOCTOR | Solo `DRAFT`; actualización clínica transaccional |
+| `DELETE` | `/medical-histories/:id` | DOCTOR | Solo `DRAFT`; soft delete |
 
 Las rutas de citas se movieron al módulo de agenda (`/api/appointments`). Los aliases
 `/medical-histories/appointments` se mantienen solo para lectura y están deprecados.
 `POST /medical-histories` ya no acepta el campo `appointment`.
 
-### 4.1 Firma clínica
+### 4.1 Ciclo de vida y firma
 
-`POST /medical-histories/:id/sign`:
+```text
+DRAFT ──complete/sign──► COMPLETED
+COMPLETED ──amend──► AMENDED (fila nueva firmada, amendsId)
+DRAFT | COMPLETED ──cancel──► CANCELLED
+DRAFT ──delete──► deleted:true (soft delete)
+```
 
-- Marca `signedAt` y `signedById`.
-- Registra `AuditAction.SIGN`.
-- Si ya estaba firmada devuelve `409 CONFLICT`.
+- `status` es enum `DRAFT | COMPLETED | AMENDED | CANCELLED | ARCHIVED`.
+- Crear sin `status` deja `DRAFT`. También se aceptan valores legacy como `Asistida`
+  (se normalizan a `COMPLETED`).
+- `PUT /medical-histories/:id/complete` guarda `signedAt` y `signedById`.
+- `POST /medical-histories/:id/sign` es alias. Permite firmar un `COMPLETED` legacy que
+  todavía no tiene firma; si ya está firmada → `409`.
+- Solo `DRAFT` es editable. `PUT /medical-histories/:id` sobre otro estado → `409`.
+- `GET /medical-histories/:id` devuelve `canEdit` y
+  `allowedActions: { edit, complete, amend, cancel, delete }` calculados por estado.
+- `POST /medical-histories/:id/amend` exige `amendReason` y crea una fila `AMENDED`
+  firmada con `amendsId`; el original no se modifica salvo `amendedAt`.
+- `PUT /medical-histories/:id/cancel` exige `{ "reason": "..." }` opcional; conserva
+  contenido y firma original.
+- `DELETE` solo aplica a `DRAFT`; el registro queda con `deleted:true`.
 
 ### 4.2 Formulario de intake
 
 `MedicalHistory.data` sigue siendo JSON libre para las respuestas del formulario. `templateSnapshot` conserva la definición de la plantilla al momento del guardado.
 
-### 4.3 Historias borradas y plantilla
+### 4.3 Edición de borrador y tratamientos
 
-- `GET /medical-histories/:id`, `PUT`, `DELETE` y `sign` responden `404` si la historia
-  tiene `deleted:true`.
+`PUT /medical-histories/:id` acepta cualquier subconjunto de:
+
+`title`, `type`, `reason`, `symptoms`, `notes`, `observations`, `diagnosis`, `evaluation`,
+`date`, `vitalSigns`, `data`, `templateId`, `templateSnapshot`, `medicalTreatments`.
+
+- `patientId`, `clinicId`, `createdById`, `status` y datos de firma no son editables.
+- Todo se guarda en una transacción: si falla una parte, no queda una historia a medias.
+- `medicalTreatments` presente = reemplazo completo; ausente = no se toca;
+  `[]` = se borran todos.
+- Cada `treatmentMedication` requiere `medicationName`, `dose` y `frequency`; `route`,
+  `duration`, `quantity`, `instructions` y fechas son opcionales.
+- Si hay `medicationId`, el servidor valida que el medicamento sea de la clínica y
+  sobrescribe el snapshot (`medicationName`, `activeIngredient`, `presentation`,
+  `concentration`) con el catálogo.
+- `sortOrder` se asigna por índice si no se envía.
+
+### 4.4 Signos vitales
+
+Forma canónica:
+
+```json
+{
+  "ta": "120/80",
+  "fc": 72,
+  "fr": 16,
+  "temp": 36.5,
+  "peso": 70.5,
+  "talla": 1.70,
+  "imc": 24.39,
+  "spo2": 98
+}
+```
+
+- `ta` es string `sistólica/diastólica`; se valida formato y rangos.
+- `imc` lo calcula el servidor (`peso / talla²`, 2 decimales) y se ignora si lo envía el
+  cliente.
+- Rangos: TA sistólica 50–300, diastólica 30–200; FC 20–250; FR 4–80; temp 30–45;
+  peso 0.5–500; talla 0.3–2.5; SpO₂ 50–100.
+- Historias viejas con `{ "signos": "TA 120/80..." }` se devuelven sin romper. Si hay
+  peso y talla, el detalle calcula `imc` al leer.
+
+### 4.5 Historias borradas y plantilla
+
+- `GET /medical-histories/:id`, `PUT`, `DELETE` y transiciones responden `404` si la
+  historia tiene `deleted:true`.
 - Un segundo `DELETE` responde `404`.
-- `PUT /medical-histories/:id` acepta `templateId` como UUID opcional.
+- `PUT /medical-histories/:id` acepta `templateId` como UUID opcional o `null` para
+  desvincular.
 - Si `templateId` no existe o pertenece a otra clínica → `404 Plantilla no encontrada`.
 - Crear una historia exige que el paciente esté activo.
+- Los listados aceptan filtro `status`.
+- `status` histórico `Asistida` se normaliza a `COMPLETED` al crear.
 
 ---
 
@@ -547,5 +653,10 @@ borrada responde `404`. Las citas borradas no aparecen en listados ni en la agen
 12. `POST /medical-histories` ya no acepta el campo `appointment`. Usar
     `POST /api/appointments` o `PUT /api/appointments/:id/attend` con `history`.
 13. `Appointment.status` pasó de texto libre al enum `SCHEDULED|CONFIRMED|ATTENDED|NO_SHOW|CANCELLED|RESCHEDULED`. Usar los endpoints de transición; `PUT /appointments/:id` no cambia el estado.
+14. `MedicalHistory.status` pasó de texto libre al enum `DRAFT|COMPLETED|AMENDED|CANCELLED|ARCHIVED`. Los valores legacy como `Asistida` se normalizan a `COMPLETED`.
+15. `PUT /medical-histories/:id` solo edita `DRAFT`. Para cerrar usar `/complete`; para corregir una cerrada usar `/amend`; para anular usar `/cancel`.
+16. `POST /medical-histories` y `PUT /medical-histories/:id` aceptan `vitalSigns` estructurado. El formato legacy `{ signos }` sigue funcionando.
+17. `medicalTreatments` en `PUT /medical-histories/:id` es reemplazo completo: el frontend debe enviar la lista entera, no solo el elemento editado.
+18. Nuevos endpoints de antecedentes en `/patients/:patientId/conditions` y ficha agregada en `/patients/:patientId/clinical-summary`.
 
 El repo `med-clinical` no fue modificado en esta pasada; este documento es el handoff.

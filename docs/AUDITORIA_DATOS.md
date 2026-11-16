@@ -9,7 +9,7 @@
 | `id` | UUID del registro de auditoría |
 | `clinicId` | Consultorio donde ocurrió la acción (nullable para datos globales) |
 | `userId` | Usuario que ejecutó la acción (nullable para procesos de sistema) |
-| `entity` | `Patient`, `MedicalHistory`, `Quote`, `Provider`, `ProviderService`, `ServiceCost`, `PaymentMethod`, `FormTemplate`, `CustomField`, `Dolar` |
+| `entity` | `Patient`, `PatientCondition`, `MedicalHistory`, `Quote`, `Provider`, `ProviderService`, `ServiceCost`, `PaymentMethod`, `FormTemplate`, `CustomField`, `Dolar` |
 | `entityId` | ID del registro afectado |
 | `action` | `CREATE`, `UPDATE`, `DELETE`, `SIGN` |
 | `metadata` | Nombres de campos/estados y flags; nunca contenido clínico |
@@ -20,7 +20,9 @@
 ## Acciones registradas
 
 - Pacientes: alta, edición y baja lógica.
-- Historias clínicas: alta, edición, baja lógica y firma.
+- Antecedentes clínicos: alta, edición, reactivación y desactivación.
+- Historias clínicas: alta, edición de borrador, addendum, cancelación, baja lógica y
+  firma/completado.
 - Presupuestos: alta, edición de borrador, revisión (nueva versión), transiciones de
   estado y baja lógica.
 - Proveedores y servicios: alta, edición y baja lógica.
@@ -36,8 +38,8 @@ clínicos/comerciales principales. Si falla la auditoría, la mutación se revie
 `AuditService.sanitize()` elimina:
 
 `password`, `token`, `access_token`, `authorization`, `data`, `vitalSigns`, `notes`,
-`diagnosis`, `symptoms`, `observations`, `evaluation`, `reason`, `email`, `phone`,
-`address`, `identify`, `account`.
+`diagnosis`, `symptoms`, `observations`, `evaluation`, `reason`, `label`, `amendReason`,
+`cancelReason`, `email`, `phone`, `address`, `identify`, `account`.
 
 Solo conserva:
 

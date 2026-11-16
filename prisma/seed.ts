@@ -1,4 +1,11 @@
-import { PrismaClient, Prisma, QuoteStatus } from '../src/generated/prisma/client';
+import {
+  MedicalHistoryStatus,
+  PatientConditionKind,
+  PrismaClient,
+  Prisma,
+  QuoteStatus,
+} from '../src/generated/prisma/client';
+import { normalizeConditionLabel } from '../src/patient-conditions/patient-conditions.utils';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcrypt';
 import 'dotenv/config';
@@ -120,6 +127,48 @@ async function main() {
   }
 
   console.log(`✅ Patients: ${patients.length} (${patientsCreated} nuevos, ${patients.length - patientsCreated} ya existian)`);
+
+  // Antecedentes clínicos demo. La etiqueta normalizada es la clave de dedupe.
+  const seededConditions = [
+    { identify: 'V-12345678', kind: PatientConditionKind.PATHOLOGY, label: 'Hipertensión arterial', notes: 'Diagnosticada en 2024. En tratamiento con losartán.', diagnosedAt: new Date('2024-01-15') },
+    { identify: 'V-12345678', kind: PatientConditionKind.ALLERGY, label: 'Penicilina', notes: 'Urticaria y edema leve.', diagnosedAt: new Date('2018-06-01') },
+    { identify: 'V-34567890', kind: PatientConditionKind.CONDITION, label: 'Sedentarismo', notes: 'Sin actividad física regular.', diagnosedAt: null },
+  ];
+  let conditionsCreated = 0;
+  for (const condition of seededConditions) {
+    const patient = patients.find((item) => item.identify === condition.identify);
+    if (!patient) {
+      throw new Error(`No se encontró el paciente sembrado con identificación ${condition.identify}.`);
+    }
+    const normalizedLabel = normalizeConditionLabel(condition.label);
+    const existing = await prisma.patientCondition.findFirst({
+      where: {
+        patientId: patient.id,
+        clinicId: clinic.id,
+        kind: condition.kind,
+        normalizedLabel,
+      },
+    });
+    if (existing) {
+      tally(false);
+      continue;
+    }
+    await prisma.patientCondition.create({
+      data: {
+        patientId: patient.id,
+        clinicId: clinic.id,
+        kind: condition.kind,
+        label: condition.label,
+        normalizedLabel,
+        notes: condition.notes,
+        diagnosedAt: condition.diagnosedAt,
+      },
+    });
+    tally(true);
+    conditionsCreated++;
+  }
+
+  console.log(`✅ Patient conditions: ${seededConditions.length} (${conditionsCreated} nuevos)`);
 
   // Create 15 providers with 5 services each
   const providersData = [
@@ -381,7 +430,7 @@ async function main() {
       diagnosis: 'Hipertensión arterial',
       evaluation: 'Se ajusta dosis de losartán',
       date: new Date(),
-      status: 'COMPLETED',
+      status: MedicalHistoryStatus.COMPLETED,
       patientId: ana.id,
       templateId: template.id,
       templateSnapshot,
@@ -413,7 +462,7 @@ async function main() {
       diagnosis: 'Hipertensión arterial controlada',
       evaluation: 'Evolución favorable tras el cambio de tratamiento',
       date: new Date(),
-      status: 'COMPLETED',
+      status: MedicalHistoryStatus.COMPLETED,
       patientId: ana.id,
       templateId: template.id,
       templateSnapshot,
@@ -445,7 +494,7 @@ async function main() {
       diagnosis: 'Lumbalgia',
       evaluation: 'Se indica imagenología',
       date: new Date(),
-      status: 'COMPLETED',
+      status: MedicalHistoryStatus.COMPLETED,
       patientId: carlos.id,
       templateId: null,
       templateSnapshot: null,
@@ -475,7 +524,7 @@ async function main() {
       diagnosis: 'Exceso de peso',
       evaluation: 'Se establece plan de 1200 kcal',
       date: new Date(),
-      status: 'COMPLETED',
+      status: MedicalHistoryStatus.COMPLETED,
       patientId: maria.id,
       templateId: null,
       templateSnapshot: null,
