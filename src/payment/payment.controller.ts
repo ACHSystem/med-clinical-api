@@ -10,14 +10,14 @@ export class PaymentController {
   constructor(private paymentService: PaymentService) {}
 
   @Get()
-  async findAll(@Query() query: PaymentMethodListQueryDto, @CurrentUser() user: CurrentUserData) {
-    return await this.paymentService.findAll(user.clinicId, query);
+  async getAllPayments(@Query() query: PaymentMethodListQueryDto, @CurrentUser() user: CurrentUserData) {
+    return await this.paymentService.getAllPayments(user.clinicId, query);
   }
 
   @Roles(Role.DOCTOR)
   @Post()
   async create(@Body() dto: PaymentMethodDto, @CurrentUser() user: CurrentUserData) {
-    return await this.paymentService.create(dto, user.clinicId);
+    return await this.paymentService.createPaymentMethod(dto, user.clinicId);
   }
 
   @Roles(Role.DOCTOR)
@@ -27,12 +27,12 @@ export class PaymentController {
     @Body() dto: PaymentMethodDto,
     @CurrentUser() user: CurrentUserData,
   ) {
-    return await this.paymentService.update(id, dto, user.clinicId);
+    return await this.paymentService.updatePaymentMethod(id, dto, user.clinicId);
   }
 
   @Roles(Role.DOCTOR)
   @Delete(':id')
   async remove(@Param('id') id: string, @CurrentUser() user: CurrentUserData) {
-    return await this.paymentService.remove(id, user.clinicId);
+    return await this.paymentService.removePaymentMethod(id, user.clinicId);
   }
 }

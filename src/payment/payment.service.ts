@@ -13,7 +13,7 @@ export class PaymentService {
     private readonly auditService: AuditService,
   ) { }
 
-  async findAll(clinicId: string, query: PaymentMethodListQueryDto) {
+  async getAllPayments(clinicId: string, query: PaymentMethodListQueryDto) {
     const where = {
       clinicId,
       isActive: query.isActive ?? true,
@@ -50,7 +50,7 @@ export class PaymentService {
     return info;
   }
 
-  async create(paymentMethod: PaymentMethodDto, clinicId: string) {
+  async createPaymentMethod(paymentMethod: PaymentMethodDto, clinicId: string) {
     const info = await this.prisma.$transaction(async (tx) => {
       const created = await tx.paymentMethod.create({
         data: {
@@ -78,7 +78,7 @@ export class PaymentService {
     return writeResponse('Información de pago agregada exitosamente', info);
   }
 
-  async update(id: string, dto: PaymentMethodDto, clinicId: string) {
+  async updatePaymentMethod(id: string, dto: PaymentMethodDto, clinicId: string) {
     await this.findOne(id, clinicId);
     const info = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.paymentMethod.update({ where: { id }, data: dto });
@@ -97,7 +97,7 @@ export class PaymentService {
     return writeResponse('Información de pago actualizada exitosamente', info);
   }
 
-  async remove(id: string, clinicId: string) {
+  async removePaymentMethod(id: string, clinicId: string) {
     await this.findOne(id, clinicId);
     const info = await this.prisma.$transaction(async (tx) => {
       const deleted = await tx.paymentMethod.update({ where: { id }, data: { isActive: false } });
