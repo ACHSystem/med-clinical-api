@@ -1,54 +1,68 @@
 # syntax=docker/dockerfile:1
 
-# ---- Stage 1: build ----
-FROM node:22-bookworm-slim AS builder
+# Imagen de produccion para Dokploy (build con Dockerfile).
+# Etapas: deps (dev) -> build -> prod-deps -> runtime.
+# El runtime NO incluye devDependencies: solo Nest compilado, el CLI de Prisma
+# (para `migrate deploy` al arrancar) y las dependencias de produccion.
 
-ENV PUPPETEER_SKIP_DOWNLOAD=true \
-    NODE_ENV=development
+ARG NODE_VERSION=24
 
-RUN npm i -g pnpm@11
-
+# ---------- base ----------
+FROM node:${NODE_VERSION}-bookworm-slim AS base
+ENV PNPM_HOME=/pnpm \
+    PATH=/pnpm:$PATH
+RUN npm i -g pnpm@11.21.0
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
-COPY prisma ./prisma
-COPY prisma.config.ts tsconfig.json tsconfig.build.json nest-cli.json ./
-
+# ---------- dependencias de build ----------
+FROM base AS deps
+# bcrypt compila desde fuente si no encuentra prebuild para la plataforma.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 make g++ \
+ && rm -rf /var/lib/apt/lists/*
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
+# ---------- build ----------
+FROM deps AS build
+# prisma.config.ts resuelve DATABASE_URL al cargarse. `prisma generate` no se
+# conecta a la base, asi que basta un valor ficticio para el build.
+ENV DATABASE_URL="postgresql://build:build@localhost:5432/build"
+COPY tsconfig.json tsconfig.build.json nest-cli.json prisma.config.ts ./
+COPY prisma ./prisma
 COPY src ./src
+RUN pnpm exec prisma generate
+RUN pnpm build
 
-RUN pnpm exec prisma generate && pnpm build
-
-# ---- Stage 2: prod deps ----
-FROM node:22-bookworm-slim AS prod-deps
-
-ENV PUPPETEER_SKIP_DOWNLOAD=true
-
-RUN npm i -g pnpm@11
-
-WORKDIR /app
-
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
-
+# ---------- solo dependencias de produccion ----------
+FROM base AS prod-deps
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 make g++ \
+ && rm -rf /var/lib/apt/lists/*
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile --prod
 
-# ---- Stage 3: runner ----
-FROM node:22-bookworm-slim
-
-ENV NODE_ENV=production
-
+# ---------- runtime ----------
+FROM node:${NODE_VERSION}-bookworm-slim AS runtime
+ENV NODE_ENV=production \
+    PORT=3000 \
+    RUN_MIGRATIONS=true
 WORKDIR /app
 
-RUN chown node:node /app
+COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
+COPY --from=build --chown=node:node /app/dist ./dist
+COPY --chown=node:node package.json prisma.config.ts ./
+COPY --chown=node:node prisma ./prisma
+COPY --chown=node:node docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 USER node
 
-COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
-COPY --from=builder --chown=node:node /app/dist ./dist
-COPY --from=builder --chown=node:node /app/prisma ./prisma
-COPY --chown=node:node package.json ./
+EXPOSE 3000
 
-EXPOSE 3008
+# GET /api esta protegido por AuthGuard: 401 significa que el proceso responde.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"
 
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["node", "dist/main.js"]

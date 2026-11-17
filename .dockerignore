@@ -1,16 +1,31 @@
+# Dependencias y artefactos locales: se regeneran dentro del build.
 node_modules
 dist
 coverage
-docs
+*.tsbuildinfo
+
+# Cliente de Prisma: lo genera `prisma generate` en la etapa de build.
+src/generated
+
+# Variables de entorno y secretos (Dokploy los inyecta en runtime).
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+
+# Repositorio, tooling y documentacion: no hacen falta en la imagen.
 .git
+.gitignore
 .github
 .vscode
+docs
+preview
+test
+opencode.json
 *.md
 Dockerfile
 .dockerignore
-opencode.json
-opencode.json.example
-tsconfig.tsbuildinfo
+docker-compose*.yml
+
+# Tests
+**/*.spec.ts
+**/*.e2e-spec.ts
