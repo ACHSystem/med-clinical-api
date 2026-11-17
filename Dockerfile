@@ -2,8 +2,9 @@
 
 # Imagen de produccion para Dokploy (build con Dockerfile).
 # Etapas: deps (dev) -> build -> prod-deps -> runtime.
-# El runtime NO incluye devDependencies: solo Nest compilado, el CLI de Prisma
-# (para `migrate deploy` al arrancar) y las dependencias de produccion.
+# El runtime NO incluye devDependencies ni el CLI de Prisma: solo Nest compilado
+# y las dependencias de produccion. Las migraciones se ejecutan fuera del
+# contenedor (por ejemplo, desde tu maquina con `pnpm exec prisma migrate deploy`).
 
 ARG NODE_VERSION=24
 
@@ -45,16 +46,11 @@ RUN pnpm install --frozen-lockfile --prod
 # ---------- runtime ----------
 FROM node:${NODE_VERSION}-bookworm-slim AS runtime
 ENV NODE_ENV=production \
-    PORT=3000 \
-    RUN_MIGRATIONS=true
+    PORT=3000
 WORKDIR /app
 
 COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
-COPY --chown=node:node package.json prisma.config.ts ./
-COPY --chown=node:node prisma ./prisma
-COPY --chown=node:node docker/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
 
 USER node
 
@@ -64,5 +60,4 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/api').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"
 
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["node", "dist/main.js"]
